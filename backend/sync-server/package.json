@@ -1,0 +1,23 @@
+{
+  "name": "@edge-lab/sync-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "postgres": "^3.4.5",
+    "ws": "^8.18.2",
+    "y-websocket": "^2.1.0",
+    "yjs": "^13.6.27"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3"
+  }
+}

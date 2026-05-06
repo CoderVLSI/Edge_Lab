@@ -1,0 +1,35 @@
+{
+  "name": "@edge-lab/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@aws-sdk/client-s3": "^3.800.0",
+    "@aws-sdk/s3-request-presigner": "^3.800.0",
+    "@google/generative-ai": "^0.24.0",
+    "@hono/node-server": "^2.0.1",
+    "@hono/zod-validator": "^0.4.3",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.7.11",
+    "openai": "^4.98.0",
+    "postgres": "^3.4.5",
+    "simple-git": "^3.27.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.17",
+    "drizzle-kit": "^0.31.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3"
+  }
+}

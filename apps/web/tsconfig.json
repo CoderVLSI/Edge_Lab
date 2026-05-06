@@ -1,0 +1,66 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "types": [
+      "w3c-web-serial"
+    ],
+    "paths": {
+      "@edge-lab/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@edge-lab/editor": [
+        "../../packages/editor/src/index.ts"
+      ],
+      "@edge-lab/sync": [
+        "../../packages/sync/src/index.ts"
+      ],
+      "@edge-lab/lsp-client": [
+        "../../packages/lsp-client/src/index.ts"
+      ],
+      "@edge-lab/hardware": [
+        "../../packages/hardware/src/index.ts"
+      ],
+      "@/*": [
+        "./*"
+      ]
+    },
+    "isolatedModules": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "../../packages/ui/src/**/*.ts",
+    "../../packages/ui/src/**/*.tsx",
+    "../../packages/editor/src/**/*.ts",
+    "../../packages/editor/src/**/*.tsx",
+    "../../packages/sync/src/**/*.ts",
+    "../../packages/hardware/src/**/*.ts",
+    "../../packages/hardware/src/**/*.tsx",
+    "../../packages/lsp-client/src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

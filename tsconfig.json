@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "paths": {
+      "@edge-lab/ui": ["./packages/ui/src/index.ts"],
+      "@edge-lab/editor": ["./packages/editor/src/index.ts"],
+      "@edge-lab/sync": ["./packages/sync/src/index.ts"],
+      "@edge-lab/lsp-client": ["./packages/lsp-client/src/index.ts"],
+      "@edge-lab/hardware": ["./packages/hardware/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "src-tauri"]
+}

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#162550"/>
+      <stop offset="100%" stop-color="#0a1628"/>
+    </radialGradient>
+    <linearGradient id="eg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#5b6ef5"/>
+    </linearGradient>
+    <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5b6ef5"/>
+      <stop offset="100%" stop-color="#9747ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="url(#bg)"/>
+  <!-- E -->
+  <path d="M8 12 L30 12 L30 19 L15 19 L15 27 L27 27 L27 34 L15 34 L15 42 L30 42 L30 49 L8 49 Z" fill="url(#eg)"/>
+  <!-- L -->
+  <path d="M33 12 L40 12 L40 42 L56 42 L56 49 L33 49 Z" fill="url(#lg)"/>
+  <!-- AI chip dot -->
+  <rect x="44" y="10" width="14" height="14" rx="3" fill="#1a1f3a" stroke="#7b5cf0" stroke-width="1.5"/>
+  <text x="51" y="21" font-family="Arial Black" font-size="8" font-weight="900" text-anchor="middle" fill="url(#lg)">AI</text>
+</svg>

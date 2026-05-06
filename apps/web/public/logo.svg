@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 520" width="520" height="520">
+  <defs>
+    <!-- Background gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#162550"/>
+      <stop offset="100%" stop-color="#0a1628"/>
+    </radialGradient>
+
+    <!-- E letter gradient: cyan → blue -->
+    <linearGradient id="eGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="50%" stop-color="#3b9eff"/>
+      <stop offset="100%" stop-color="#5b6ef5"/>
+    </linearGradient>
+
+    <!-- L letter gradient: blue → purple -->
+    <linearGradient id="lGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5b6ef5"/>
+      <stop offset="50%" stop-color="#7b5cf0"/>
+      <stop offset="100%" stop-color="#9747ff"/>
+    </linearGradient>
+
+    <!-- Circuit trace color -->
+    <linearGradient id="traceGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#3b9eff" stop-opacity="0.6"/>
+    </linearGradient>
+
+    <!-- EDGE text gradient -->
+    <linearGradient id="edgeTextGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e0e8ff"/>
+    </linearGradient>
+
+    <!-- LAB text gradient -->
+    <linearGradient id="labTextGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b9eff"/>
+      <stop offset="100%" stop-color="#9747ff"/>
+    </linearGradient>
+
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+
+    <!-- Glow for circuit traces -->
+    <filter id="traceGlow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Chip filter -->
+    <filter id="chipShadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#7b5cf0" flood-opacity="0.5"/>
+    </filter>
+
+    <!-- Rounded rect clip for background -->
+    <clipPath id="roundedClip">
+      <rect width="520" height="520" rx="80" ry="80"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="520" height="520" rx="80" ry="80" fill="url(#bgGrad)"/>
+
+  <!-- ═══ CIRCUIT TRACES (left of E) ═══ -->
+  <g filter="url(#traceGlow)" stroke="url(#traceGrad)" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <!-- Top trace -->
+    <line x1="42" y1="165" x2="95" y2="165"/>
+    <line x1="95" y1="165" x2="108" y2="152"/>
+    <!-- Mid-top trace -->
+    <line x1="42" y1="205" x2="78" y2="205"/>
+    <line x1="78" y1="205" x2="108" y2="178"/>
+    <!-- Middle trace -->
+    <line x1="42" y1="248" x2="108" y2="248"/>
+    <!-- Mid-bottom trace -->
+    <line x1="42" y1="290" x2="78" y2="290"/>
+    <line x1="78" y1="290" x2="108" y2="315"/>
+    <!-- Bottom trace -->
+    <line x1="42" y1="330" x2="95" y2="330"/>
+    <line x1="95" y1="330" x2="108" y2="343"/>
+  </g>
+
+  <!-- Circuit nodes (circles at left ends) -->
+  <g fill="none" stroke="#00d4ff" stroke-width="2.5" filter="url(#traceGlow)">
+    <circle cx="42" cy="165" r="5" fill="#00d4ff" opacity="0.9"/>
+    <circle cx="42" cy="205" r="5" fill="#00d4ff" opacity="0.9"/>
+    <circle cx="42" cy="248" r="5" fill="#00d4ff" opacity="0.9"/>
+    <circle cx="42" cy="290" r="4" fill="#3b9eff" opacity="0.8"/>
+    <circle cx="42" cy="330" r="4" fill="#3b9eff" opacity="0.8"/>
+  </g>
+
+  <!-- ═══ E LETTER ═══ -->
+  <!-- Using a bold E shape with flat cuts -->
+  <g filter="url(#shadow)">
+    <path d="
+      M 115 130
+      L 265 130
+      L 265 175
+      L 160 175
+      L 160 225
+      L 250 225
+      L 250 268
+      L 160 268
+      L 160 318
+      L 265 318
+      L 265 363
+      L 115 363
+      Z
+    " fill="url(#eGrad)"/>
+  </g>
+
+  <!-- ═══ L LETTER ═══ -->
+  <g filter="url(#shadow)">
+    <path d="
+      M 285 130
+      L 335 130
+      L 335 335
+      L 430 335
+      L 430 385
+      L 285 385
+      Z
+    " fill="url(#lGrad)"/>
+  </g>
+
+  <!-- ═══ AI CHIP (top-right, on L) ═══ -->
+  <g filter="url(#chipShadow)">
+    <!-- Chip body -->
+    <rect x="348" y="108" width="88" height="88" rx="10" ry="10" fill="#1a1f3a" stroke="url(#lGrad)" stroke-width="2.5"/>
+
+    <!-- Chip pins — top -->
+    <rect x="364" y="96" width="8" height="14" rx="2" fill="#7b5cf0"/>
+    <rect x="382" y="96" width="8" height="14" rx="2" fill="#7b5cf0"/>
+    <rect x="400" y="96" width="8" height="14" rx="2" fill="#7b5cf0"/>
+    <rect x="418" y="96" width="8" height="14" rx="2" fill="#7b5cf0"/>
+
+    <!-- Chip pins — bottom -->
+    <rect x="364" y="194" width="8" height="14" rx="2" fill="#7b5cf0"/>
+    <rect x="382" y="194" width="8" height="14" rx="2" fill="#7b5cf0"/>
+    <rect x="400" y="194" width="8" height="14" rx="2" fill="#7b5cf0"/>
+    <rect x="418" y="194" width="8" height="14" rx="2" fill="#7b5cf0"/>
+
+    <!-- Chip pins — left -->
+    <rect x="336" y="122" width="14" height="8" rx="2" fill="#9747ff"/>
+    <rect x="336" y="140" width="14" height="8" rx="2" fill="#9747ff"/>
+    <rect x="336" y="158" width="14" height="8" rx="2" fill="#9747ff"/>
+    <rect x="336" y="176" width="14" height="8" rx="2" fill="#9747ff"/>
+
+    <!-- "AI" text inside chip -->
+    <text x="392" y="162" font-family="Arial Black, sans-serif" font-size="28" font-weight="900"
+          text-anchor="middle" fill="url(#lGrad)">AI</text>
+
+    <!-- Inner chip detail lines -->
+    <line x1="360" y1="125" x2="424" y2="125" stroke="#2a3060" stroke-width="1.5"/>
+    <line x1="360" y1="183" x2="424" y2="183" stroke="#2a3060" stroke-width="1.5"/>
+  </g>
+
+  <!-- ═══ BOTTOM TEXT ═══ -->
+  <!-- EDGE -->
+  <text x="72" y="455" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="900"
+        letter-spacing="14" fill="url(#edgeTextGrad)">EDGE</text>
+  <!-- LAB -->
+  <text x="315" y="455" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="900"
+        letter-spacing="14" fill="url(#labTextGrad)">LAB</text>
+
+  <!-- Subtle bottom glow line -->
+  <rect x="60" y="468" width="400" height="2" rx="1" fill="url(#labTextGrad)" opacity="0.3"/>
+</svg>

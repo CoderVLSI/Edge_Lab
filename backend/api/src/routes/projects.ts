@@ -4,6 +4,7 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import { db as sqliteDb } from "../db/sqlite";
 import { existsSync, mkdirSync } from "fs";
+import { spawn } from "child_process";
 import { getProjectPath } from "../lib/git-service";
 
 function newId() {
@@ -27,7 +28,6 @@ projectsRouter.post(
     const id = newId();
     sqliteDb.createProject.run({ id, user_id: userId, name, board_type: boardType });
 
-    // Also create the project directory on disk
     const projectDir = getProjectPath(id);
     if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
 
@@ -63,3 +63,41 @@ projectsRouter.post(
     return c.json({ id, path, content }, 201);
   }
 );
+
+// ── Build & Flash (PlatformIO) ────────────────────────────────────────────────
+
+function runPio(
+  args: string[],
+  cwd: string
+): Promise<{ output: string[]; exitCode: number }> {
+  return new Promise((resolve) => {
+    const lines: string[] = [];
+    const proc = spawn("pio", args, { cwd });
+    proc.stdout.on("data", (d: Buffer) =>
+      lines.push(...String(d).split("\n").filter(Boolean))
+    );
+    proc.stderr.on("data", (d: Buffer) =>
+      lines.push(...String(d).split("\n").filter(Boolean))
+    );
+    proc.on("close", (code) => resolve({ output: lines, exitCode: code ?? 1 }));
+    proc.on("error", (e) =>
+      resolve({ output: [`Error: ${e.message}`], exitCode: -1 })
+    );
+  });
+}
+
+projectsRouter.post("/:id/build", async (c) => {
+  const projectDir = getProjectPath(c.req.param("id"));
+  if (!existsSync(projectDir))
+    return c.json({ error: "Project directory not found" }, 404);
+  const result = await runPio(["run"], projectDir);
+  return c.json(result);
+});
+
+projectsRouter.post("/:id/flash", async (c) => {
+  const projectDir = getProjectPath(c.req.param("id"));
+  if (!existsSync(projectDir))
+    return c.json({ error: "Project directory not found" }, 404);
+  const result = await runPio(["run", "--target", "upload"], projectDir);
+  return c.json(result);
+});

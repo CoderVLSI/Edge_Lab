@@ -12,32 +12,62 @@ import {
   Pressable,
   ScrollView,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
-const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN ?? "";
+// ── Local storage keys ────────────────────────────────────────────────────────
+const PROJECTS_KEY = "edge-lab:projects";
 
-const BOARDS = [
-  { id: "uno", name: "Arduino Uno" },
-  { id: "mega", name: "Arduino Mega 2560" },
-  { id: "nano", name: "Arduino Nano" },
-  { id: "esp32", name: "ESP32 Dev Module" },
-  { id: "esp8266", name: "ESP8266 NodeMCU" },
-  { id: "esp32s3", name: "ESP32-S3 Dev Module" },
-];
-
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface Project {
   id: string;
   name: string;
   board_type: string;
+  created_at: string;
 }
 
-function authHeaders() {
-  return API_TOKEN
-    ? { Authorization: `Bearer ${API_TOKEN}`, "Content-Type": "application/json" }
-    : { "Content-Type": "application/json" };
+// ── Boards ────────────────────────────────────────────────────────────────────
+const BOARDS = [
+  { id: "uno",     name: "Arduino Uno" },
+  { id: "mega",    name: "Arduino Mega 2560" },
+  { id: "nano",    name: "Arduino Nano" },
+  { id: "esp32",   name: "ESP32 Dev Module" },
+  { id: "esp8266", name: "ESP8266 NodeMCU" },
+  { id: "esp32s3", name: "ESP32-S3 Dev Module" },
+];
+
+// ── Demo starter project ──────────────────────────────────────────────────────
+const DEMO_PROJECT: Project = {
+  id: "demo-blink",
+  name: "LED Blink (ESP32)",
+  board_type: "esp32",
+  created_at: new Date().toISOString(),
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function uuid(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
+async function loadProjects(): Promise<Project[]> {
+  try {
+    const raw = await AsyncStorage.getItem(PROJECTS_KEY);
+    if (raw) return JSON.parse(raw) as Project[];
+  } catch { /* ignore */ }
+  // First launch — seed demo project
+  const initial = [DEMO_PROJECT];
+  await AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(initial));
+  return initial;
+}
+
+async function saveProjects(projects: Project[]): Promise<void> {
+  await AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,54 +76,53 @@ export default function Dashboard() {
   const [newBoard, setNewBoard] = useState("esp32");
   const [creating, setCreating] = useState(false);
 
-  const loadProjects = useCallback(async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/projects`, {
-        headers: authHeaders(),
-      });
-      if (res.ok) {
-        const data: Project[] = await res.json();
-        setProjects(data);
-      }
-    } catch {
-      // Server unreachable — show demo projects so the UI is not blank
-      setProjects([
-        { id: "demo-1", name: "LED Blink ESP32", board_type: "esp32" },
-        { id: "demo-2", name: "DHT22 Sensor", board_type: "uno" },
-        { id: "demo-3", name: "MQTT Client", board_type: "esp8266" },
-      ]);
-    } finally {
-      setLoading(false);
-    }
+    const ps = await loadProjects();
+    setProjects(ps);
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const createProject = async () => {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch(`${API_URL}/api/projects`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ name: newName.trim(), boardType: newBoard }),
-      });
-      if (res.ok) {
-        const project: Project = await res.json();
-        setCreateModal(false);
-        setNewName("");
-        router.push(`/editor/${project.id}` as never);
-      } else {
-        Alert.alert("Error", "Could not create project.");
-      }
+      const project: Project = {
+        id: uuid(),
+        name: newName.trim(),
+        board_type: newBoard,
+        created_at: new Date().toISOString(),
+      };
+      const updated = [project, ...projects];
+      await saveProjects(updated);
+      setProjects(updated);
+      setCreateModal(false);
+      setNewName("");
+      router.push(`/editor/${project.id}` as never);
     } catch (e) {
-      Alert.alert("Error", `Network error: ${String(e)}`);
+      Alert.alert("Error", `Could not create project: ${String(e)}`);
     } finally {
       setCreating(false);
     }
+  };
+
+  const deleteProject = (id: string) => {
+    Alert.alert("Delete project?", "This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const updated = projects.filter((p) => p.id !== id);
+          await saveProjects(updated);
+          setProjects(updated);
+          // Also remove files
+          await AsyncStorage.removeItem(`edge-lab:files:${id}`);
+        },
+      },
+    ]);
   };
 
   return (
@@ -105,13 +134,18 @@ export default function Dashboard() {
         </TouchableOpacity>
       </View>
 
+      {/* Offline badge */}
+      <View style={s.offlineBadge}>
+        <Text style={s.offlineBadgeText}>● Local — no backend required</Text>
+      </View>
+
       {loading ? (
         <ActivityIndicator color="#f59e0b" style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={projects}
           keyExtractor={(p) => p.id}
-          contentContainerStyle={{ gap: 10, paddingTop: 4 }}
+          contentContainerStyle={{ gap: 10, paddingTop: 8 }}
           ListEmptyComponent={
             <Text style={s.empty}>No projects yet. Tap + New to create one.</Text>
           }
@@ -119,6 +153,7 @@ export default function Dashboard() {
             <TouchableOpacity
               style={s.card}
               onPress={() => router.push(`/editor/${item.id}` as never)}
+              onLongPress={() => deleteProject(item.id)}
             >
               <View style={s.cardLeft}>
                 <Text style={s.cardName}>{item.name}</Text>
@@ -186,10 +221,23 @@ export default function Dashboard() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#09090b", padding: 16 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  header: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   heading: { color: "#fafafa", fontSize: 20, fontWeight: "700", flex: 1 },
   newBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: "#f59e0b" },
   newBtnText: { color: "#09090b", fontWeight: "700", fontSize: 13 },
+  offlineBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "rgba(74,222,128,0.08)",
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.2)",
+  },
+  offlineBadgeText: { color: "#4ade80", fontSize: 10, fontFamily: "monospace" },
   empty: { color: "#52525b", textAlign: "center", marginTop: 40, fontSize: 14 },
   card: {
     backgroundColor: "#18181b",

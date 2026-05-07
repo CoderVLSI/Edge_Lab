@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Edge Lab",
+    "slug": "edge-lab",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "edgelab",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090b"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.edgelab.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Edge Lab uses the camera to attach photos to AI chat messages.",
+        "NSPhotoLibraryUsageDescription": "Edge Lab accesses your photo library to attach images to AI chat messages.",
+        "NSPhotoLibraryAddUsageDescription": "Edge Lab saves images to your photo library."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09090b"
+      },
+      "package": "com.edgelab.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Edge Lab accesses photos for AI vision messages.",
+          "cameraPermission": "Edge Lab uses the camera for AI vision messages."
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "7c9a1325-0b34-463a-b9af-fffbe078023d"
+      }
+    },
+    "owner": "sid28"
+  }
+}

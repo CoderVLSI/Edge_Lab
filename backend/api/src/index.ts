@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { serve } from "@hono/node-server";
-import { createNodeWebSocket } from "@hono/node-server/ws";
+import { upgradeWebSocket } from "@hono/node-server";
 import { authRouter } from "./routes/auth";
 import { projectsRouter } from "./routes/projects";
 import { aiRouter } from "./routes/ai";
@@ -13,13 +13,21 @@ import { authMiddleware } from "./middleware/auth";
 
 const app = new Hono();
 
-const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
-
 app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: [process.env.WEB_URL ?? "http://localhost:3000"],
+    origin: (origin) => {
+      // Allow web app, Expo dev server, Tauri, and null (React Native fetch)
+      const allowed = [
+        process.env.WEB_URL ?? "http://localhost:3000",
+        "http://localhost:8081",  // Expo Metro bundler
+        "http://localhost:19006", // Expo web
+        "tauri://localhost",      // Tauri desktop
+      ];
+      if (!origin || allowed.some((a) => origin.startsWith(a))) return origin ?? "*";
+      return allowed[0];
+    },
     allowHeaders: [
       "Content-Type", "Authorization",
       "X-ANTHROPIC_API_KEY", "X-OPENAI_API_KEY", "X-GEMINI_API_KEY",
@@ -47,8 +55,6 @@ app.route("/api/serial", createSerialRouter(upgradeWebSocket));
 
 const port = Number(process.env.PORT ?? 4000);
 
-const server = serve({ fetch: app.fetch, port }, () => {
+serve({ fetch: app.fetch, port }, () => {
   console.log(`API server running on http://localhost:${port}`);
 });
-
-injectWebSocket(server);

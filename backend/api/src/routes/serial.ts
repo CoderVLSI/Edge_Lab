@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import type { UpgradeWebSocket } from "hono/ws";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
-export function createSerialRouter(upgradeWebSocket: UpgradeWebSocket) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createSerialRouter(upgradeWebSocket: (handler: (c: any) => any) => any) {
   const router = new Hono();
 
   // List available serial ports — tries pio first, falls back to /dev glob
@@ -37,7 +37,7 @@ export function createSerialRouter(upgradeWebSocket: UpgradeWebSocket) {
       let serialPort: any = null;
 
       return {
-        async onOpen(_, ws) {
+        async onOpen(_: unknown, ws: any) {
           if (!portPath) {
             ws.send("ERROR: No port specified in query param ?port=");
             ws.close();
@@ -56,7 +56,7 @@ export function createSerialRouter(upgradeWebSocket: UpgradeWebSocket) {
             ws.close();
           }
         },
-        onMessage(evt) {
+        onMessage(evt: any) {
           serialPort?.write(String(evt.data));
         },
         onClose() {

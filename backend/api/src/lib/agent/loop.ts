@@ -6,7 +6,38 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { TOOL_DEFS, executeTool } from "./tools";
-import type { ChatMessage } from "../providers/types";
+import type { ChatMessage, ImagePart } from "../providers/types";
+
+/** Convert a ChatMessage to Anthropic MessageParam, supporting vision */
+function toAnthropicMsg(m: ChatMessage): Anthropic.MessageParam {
+  if (m.role === "assistant" || !m.images?.length) {
+    return { role: m.role, content: m.content };
+  }
+  // User message with images — build multi-part content
+  const content: Anthropic.ContentBlockParam[] = [
+    { type: "text", text: m.content },
+    ...m.images.map((img): Anthropic.ImageBlockParam => ({
+      type: "image",
+      source: { type: "base64", media_type: img.mediaType, data: img.data },
+    })),
+  ];
+  return { role: "user", content };
+}
+
+/** Convert ChatMessage images to OpenAI vision content parts */
+function toOpenAIMsg(m: ChatMessage): OpenAI.Chat.ChatCompletionMessageParam {
+  if (m.role === "assistant" || !m.images?.length) {
+    return { role: m.role as "user" | "assistant", content: m.content };
+  }
+  const content: OpenAI.Chat.ChatCompletionContentPart[] = [
+    { type: "text", text: m.content },
+    ...m.images.map((img): OpenAI.Chat.ChatCompletionContentPartImage => ({
+      type: "image_url",
+      image_url: { url: `data:${img.mediaType};base64,${img.data}` },
+    })),
+  ];
+  return { role: "user", content };
+}
 
 export type AgentEvent =
   | { type: "text"; text: string }
@@ -26,11 +57,8 @@ export async function* anthropicAgentLoop(
 ): AsyncGenerator<AgentEvent> {
   const client = new Anthropic({ apiKey: apiKey ?? process.env.ANTHROPIC_API_KEY });
 
-  // Convert to Anthropic message format
-  let history: Anthropic.MessageParam[] = messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  // Convert to Anthropic message format (with optional vision)
+  let history: Anthropic.MessageParam[] = messages.map(toAnthropicMsg);
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await client.messages.create({
@@ -106,7 +134,7 @@ export async function* openaiAgentLoop(
 
   let history: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
-    ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+    ...messages.map(toOpenAIMsg),
   ];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {

@@ -53,7 +53,15 @@ agentRouter.post(
       provider: z.string().default("anthropic"),
       model: z.string().default("claude-sonnet-4-6"),
       projectId: z.string(),
-      messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })),
+      messages: z.array(z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string(),
+        images: z.array(z.object({
+          type: z.literal("image"),
+          mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+          data: z.string(), // base64
+        })).optional(),
+      })),
       boardType: z.string().optional(),
       fileContext: z.string().optional(),
       mode: z.enum(["firmware", "schematics", "board"]).optional(),

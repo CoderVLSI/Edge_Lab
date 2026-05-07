@@ -1,6 +1,13 @@
+export interface ImagePart {
+  type: "image";
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  data: string; // base64
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  images?: ImagePart[]; // vision — only on user messages
 }
 
 export interface ChatRequest {

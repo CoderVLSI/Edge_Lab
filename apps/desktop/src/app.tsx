@@ -5,7 +5,7 @@ import { Command } from "@tauri-apps/plugin-shell";
 import { invoke } from "@tauri-apps/api/core";
 import { FileTree, type FileTreeNode } from "@edge-lab/ui";
 import { SerialMonitor, BoardSelector, BOARDS, type Board } from "@edge-lab/hardware";
-import { FolderOpen, Upload, Play, ChevronRight, Wifi } from "lucide-react";
+import { FolderOpen, Upload, Play, ChevronRight, Wifi, GitBranch, GitMerge } from "lucide-react";
 import * as Y from "yjs";
 import { CodeEditor } from "@edge-lab/editor";
 
@@ -29,7 +29,7 @@ const CSS_VARS = `
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 `;
 
-type BottomTab = "terminal" | "serial" | "ports";
+type BottomTab = "terminal" | "serial" | "ports" | "git";
 
 export function DesktopApp() {
   const [rootPath, setRootPath] = useState<string | null>(null);
@@ -41,6 +41,9 @@ export function DesktopApp() {
   const [serialPorts, setSerialPorts] = useState<string[]>([]);
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const [bottomHeight] = useState(200);
+  const [commitMsg, setCommitMsg] = useState("");
+  const [gitLog, setGitLog] = useState<string[]>([]);
+  const [gitRunning, setGitRunning] = useState(false);
   const yDocRef = useRef(new Y.Doc());
   const yTextRef = useRef(yDocRef.current.getText("file"));
   const [, forceUpdate] = useState(0);
@@ -56,6 +59,37 @@ export function DesktopApp() {
   };
 
   useEffect(() => { refreshPorts(); }, []);
+
+  // ── Git operations (calls local git via backend or Tauri Command) ──
+  const gitCmd = async (args: string[]) => {
+    if (!rootPath) { setGitLog((l) => [...l, "✗ Open a folder first"]); return; }
+    setGitRunning(true);
+    try {
+      const cmd = Command.create("git", args, { cwd: rootPath });
+      let out = "";
+      cmd.stdout.on("data", (d: string) => { out += d; });
+      cmd.stderr.on("data", (d: string) => { out += d; });
+      const res = await cmd.execute();
+      const lines = out.trim().split("\n").filter(Boolean);
+      setGitLog((l) => [
+        ...l,
+        `$ git ${args.join(" ")}`,
+        ...lines,
+        res.code === 0 ? `✓ Done` : `✗ Exit ${res.code}`,
+      ]);
+    } catch (e) {
+      setGitLog((l) => [...l, `✗ Error: ${String(e)}`]);
+    } finally {
+      setGitRunning(false);
+    }
+  };
+
+  const gitCommit = async () => {
+    if (!commitMsg.trim()) return;
+    await gitCmd(["add", "."]);
+    await gitCmd(["commit", "-m", commitMsg]);
+    setCommitMsg("");
+  };
 
   const openFolder = async () => {
     const selected = await open({ directory: true, multiple: false });
@@ -196,6 +230,28 @@ export function DesktopApp() {
           >
             <Upload size={11} /> Flash
           </button>
+
+          <div style={{ width: 1, height: 16, background: "var(--b2)" }} />
+
+          {/* Git Push */}
+          <button
+            onClick={() => gitCmd(["push"])}
+            disabled={gitRunning}
+            title="git push"
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", border: "1px solid var(--b2)", borderRadius: 5, background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer", opacity: gitRunning ? 0.45 : 1 }}
+          >
+            <GitBranch size={11} /> Push
+          </button>
+
+          {/* Git Pull */}
+          <button
+            onClick={() => gitCmd(["pull"])}
+            disabled={gitRunning}
+            title="git pull"
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", border: "1px solid var(--b2)", borderRadius: 5, background: "transparent", color: "var(--t2)", fontSize: 12, cursor: "pointer", opacity: gitRunning ? 0.45 : 1 }}
+          >
+            <GitMerge size={11} /> Pull
+          </button>
         </div>
 
         {/* ── Main area ── */}
@@ -266,6 +322,7 @@ export function DesktopApp() {
                 <button style={bottomTabStyle("terminal")} onClick={() => setBottomTab("terminal")}>TERMINAL</button>
                 <button style={bottomTabStyle("serial")} onClick={() => setBottomTab("serial")}>SERIAL</button>
                 <button style={bottomTabStyle("ports")} onClick={() => { setBottomTab("ports"); refreshPorts(); }}>PORTS</button>
+                <button style={bottomTabStyle("git")} onClick={() => { setBottomTab("git"); gitCmd(["status", "--short"]); }}>GIT</button>
               </div>
               <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
 
@@ -283,6 +340,75 @@ export function DesktopApp() {
                 {/* Serial monitor */}
                 <div style={{ position: "absolute", inset: 0, display: bottomTab === "serial" ? "flex" : "none", flexDirection: "column" }}>
                   <SerialMonitor />
+                </div>
+
+                {/* Git panel */}
+                <div style={{ position: "absolute", inset: 0, display: bottomTab === "git" ? "flex" : "none", flexDirection: "column" }}>
+                  {/* Git action row */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--b1)", flexShrink: 0, background: "var(--s1)" }}>
+                    <button
+                      onClick={() => gitCmd(["add", "."])}
+                      disabled={gitRunning}
+                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 4, background: "var(--amber-lo)", color: "var(--amber)", fontSize: 10, cursor: "pointer", fontFamily: "monospace", opacity: gitRunning ? 0.45 : 1 }}
+                    >
+                      + Stage All
+                    </button>
+                    <button
+                      onClick={() => gitCmd(["status", "--short"])}
+                      disabled={gitRunning}
+                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid var(--b2)", borderRadius: 4, background: "transparent", color: "var(--t3)", fontSize: 10, cursor: "pointer", fontFamily: "monospace", opacity: gitRunning ? 0.45 : 1 }}
+                    >
+                      ↻ Status
+                    </button>
+                    <button
+                      onClick={() => gitCmd(["push"])}
+                      disabled={gitRunning}
+                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid var(--b2)", borderRadius: 4, background: "transparent", color: "var(--t3)", fontSize: 10, cursor: "pointer", fontFamily: "monospace", opacity: gitRunning ? 0.45 : 1 }}
+                    >
+                      ↑ Push
+                    </button>
+                    <button
+                      onClick={() => gitCmd(["pull"])}
+                      disabled={gitRunning}
+                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid var(--b2)", borderRadius: 4, background: "transparent", color: "var(--t3)", fontSize: 10, cursor: "pointer", fontFamily: "monospace", opacity: gitRunning ? 0.45 : 1 }}
+                    >
+                      ↓ Pull
+                    </button>
+                    {gitRunning && <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--amber)" }}>running…</span>}
+                    <button
+                      onClick={() => setGitLog([])}
+                      style={{ marginLeft: "auto", padding: "3px 8px", border: "1px solid var(--b2)", borderRadius: 4, background: "transparent", color: "var(--t4)", fontSize: 10, cursor: "pointer", fontFamily: "monospace" }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {/* Commit input */}
+                  <div style={{ display: "flex", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--b1)", flexShrink: 0 }}>
+                    <input
+                      value={commitMsg}
+                      onChange={(e) => setCommitMsg(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && gitCommit()}
+                      placeholder="Commit message…"
+                      style={{ flex: 1, height: 26, border: "1px solid var(--b2)", borderRadius: 4, background: "var(--s1)", color: "var(--t1)", padding: "0 8px", fontFamily: "monospace", fontSize: 11, outline: "none" }}
+                    />
+                    <button
+                      onClick={gitCommit}
+                      disabled={!commitMsg.trim() || gitRunning}
+                      style={{ padding: "0 10px", height: 26, border: "none", borderRadius: 4, background: commitMsg.trim() ? "var(--amber)" : "var(--b2)", color: commitMsg.trim() ? "#07080f" : "var(--t4)", fontSize: 11, fontWeight: 700, cursor: commitMsg.trim() ? "pointer" : "default", fontFamily: "monospace" }}
+                    >
+                      ✓ Commit
+                    </button>
+                  </div>
+                  {/* Git log */}
+                  <div style={{ flex: 1, overflowY: "auto", padding: "6px 12px" }}>
+                    {gitLog.length === 0
+                      ? <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--t4)" }}>// Git output will appear here</span>
+                      : gitLog.map((l, i) => (
+                        <div key={i} style={{ fontFamily: "monospace", fontSize: 11, lineHeight: 1.6, color: l.startsWith("✓") ? "var(--green)" : l.startsWith("✗") ? "var(--red)" : l.startsWith("$") ? "var(--amber)" : "var(--t2)" }}>
+                          {l}
+                        </div>
+                      ))}
+                  </div>
                 </div>
 
                 {/* Ports list */}

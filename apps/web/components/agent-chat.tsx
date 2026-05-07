@@ -27,10 +27,18 @@ interface ToolCall {
   status: "running" | "done" | "error";
 }
 
+interface ImagePart {
+  type: "image";
+  mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  data: string; // base64 (no prefix)
+  preview: string; // data URL for display
+}
+
 interface DisplayMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  images?: ImagePart[];
   toolCalls: ToolCall[];
   streaming: boolean;
 }
@@ -139,8 +147,22 @@ function MessageBubble({ msg }: { msg: DisplayMessage }) {
         <div style={{ flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: "var(--b3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <User size={13} color="var(--t2)" />
         </div>
-        <div style={{ maxWidth: "82%", background: "var(--amber)", color: "#07080f", borderRadius: 8, padding: "8px 12px", fontFamily: "var(--font-ui)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", fontWeight: 500 }}>
-          {msg.text}
+        <div style={{ maxWidth: "82%", display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-end" }}>
+          {/* Image thumbnails */}
+          {msg.images && msg.images.length > 0 && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {msg.images.map((img, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={img.preview} alt="" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 7, border: "1px solid var(--b2)" }} />
+              ))}
+            </div>
+          )}
+          {/* Text bubble — hide placeholder "(image)" when images are present */}
+          {msg.text && (msg.text !== "(image)" || !msg.images?.length) && (
+            <div style={{ background: "var(--amber)", color: "#07080f", borderRadius: 8, padding: "8px 12px", fontFamily: "var(--font-ui)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", fontWeight: 500 }}>
+              {msg.text}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -186,9 +208,44 @@ export function AgentChat({
   );
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
+  const [pendingImages, setPendingImages] = useState<ImagePart[]>([]);
   const [running, setRunning] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Image helpers
+  const readFileAsImage = (file: File): Promise<ImagePart> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        const [header, data] = dataUrl.split(",");
+        const mediaType = (header.match(/:(.*?);/)?.[1] ?? "image/png") as ImagePart["mediaType"];
+        resolve({ type: "image", mediaType, data, preview: dataUrl });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const addImages = async (files: FileList | File[]) => {
+    const imgs = await Promise.all(Array.from(files).filter(f => f.type.startsWith("image/")).map(readFileAsImage));
+    setPendingImages((p) => [...p, ...imgs].slice(0, 4)); // max 4
+  };
+
+  // Paste image from clipboard
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItems = items.filter(i => i.kind === "file" && i.type.startsWith("image/"));
+      if (!imageItems.length) return;
+      e.preventDefault();
+      const files = imageItems.map(i => i.getAsFile()!).filter(Boolean);
+      addImages(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -209,14 +266,17 @@ export function AgentChat({
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || running) return;
+    if ((!text && !pendingImages.length) || running) return;
+    const imgs = [...pendingImages];
     setInput("");
+    setPendingImages([]);
     setRunning(true);
 
     const userMsg: DisplayMessage = {
       id: `u-${Date.now()}`,
       role: "user",
-      text,
+      text: text || "(image)",
+      images: imgs.length ? imgs : undefined,
       toolCalls: [],
       streaming: false,
     };
@@ -232,11 +292,19 @@ export function AgentChat({
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-    // Build history for the API (text messages only)
+    // Build history for the API (with optional vision)
     const history = messages
       .filter((m) => m.text)
-      .map((m) => ({ role: m.role, content: m.text }));
-    history.push({ role: "user", content: text });
+      .map((m) => ({
+        role: m.role,
+        content: m.text,
+        ...(m.images?.length ? { images: m.images.map(({ preview: _, ...i }) => i) } : {}),
+      }));
+    history.push({
+      role: "user" as const,
+      content: text || "(image)",
+      ...(imgs.length ? { images: imgs.map(({ preview: _, ...i }) => i) } : {}),
+    });
 
     try {
       const token = typeof localStorage !== "undefined" ? localStorage.getItem("auth-token") ?? "" : "";
@@ -472,13 +540,47 @@ export function AgentChat({
 
       {/* Input */}
       <div style={{ borderTop: "1px solid var(--b1)", background: "var(--bg)", padding: 14, flexShrink: 0 }}>
+
+        {/* Pending image thumbnails */}
+        {pendingImages.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+            {pendingImages.map((img, i) => (
+              <div key={i} style={{ position: "relative", width: 56, height: 56 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.preview} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid var(--b2)" }} />
+                <button
+                  onClick={() => setPendingImages((p) => p.filter((_, j) => j !== i))}
+                  style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--red)", border: "none", color: "#fff", fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", minWidth: 0 }}>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => e.target.files && addImages(e.target.files)}
+          />
+          {/* Image attach button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach image (or paste)"
+            style={{ width: 38, height: 38, border: "1px solid var(--b2)", borderRadius: 8, background: "transparent", color: "var(--t3)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: 16 }}
+          >
+            🖼
+          </button>
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Ask to edit, build, flash, or explain…"
+            placeholder="Ask to edit, build, flash… or paste a photo of your circuit"
             disabled={running}
             rows={3}
             style={{ minHeight: 76, flex: 1, minWidth: 0, resize: "none", border: "1px solid var(--b2)", borderRadius: 8, background: "var(--s1)", color: "var(--t1)", padding: "10px 12px", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.5, outline: "none", transition: "border-color 0.15s" }}
@@ -487,9 +589,9 @@ export function AgentChat({
           />
           <button
             onClick={send}
-            disabled={running || !input.trim()}
+            disabled={running || (!input.trim() && !pendingImages.length)}
             title="Send (Enter)"
-            style={{ width: 38, height: 38, border: "none", borderRadius: 8, background: running || !input.trim() ? "var(--s2)" : "var(--amber)", color: running || !input.trim() ? "var(--t4)" : "#07080f", display: "flex", alignItems: "center", justifyContent: "center", cursor: running || !input.trim() ? "not-allowed" : "pointer", flexShrink: 0, transition: "background 0.15s" }}
+            style={{ width: 38, height: 38, border: "none", borderRadius: 8, background: running || (!input.trim() && !pendingImages.length) ? "var(--s2)" : "var(--amber)", color: running || (!input.trim() && !pendingImages.length) ? "var(--t4)" : "#07080f", display: "flex", alignItems: "center", justifyContent: "center", cursor: running || (!input.trim() && !pendingImages.length) ? "not-allowed" : "pointer", flexShrink: 0, transition: "background 0.15s" }}
           >
             {running ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>

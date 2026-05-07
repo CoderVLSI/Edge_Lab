@@ -10,9 +10,13 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { useLocalSearchParams } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN ?? "";
@@ -30,12 +34,24 @@ const BOARDS = [
 const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400];
 
 type Board = (typeof BOARDS)[number];
-type BottomTab = "terminal" | "serial" | "ports";
+type BottomTab = "terminal" | "serial" | "ports" | "git";
 
 interface ProjectFile {
   id: string;
   path: string;
   content: string;
+}
+
+interface AgentImage {
+  mediaType: string;
+  data: string;  // base64
+  preview: string; // uri
+}
+
+interface AgentMessage {
+  role: "user" | "assistant";
+  text: string;
+  images?: { preview: string }[];
 }
 
 const DEMO_FILES: ProjectFile[] = [
@@ -95,7 +111,6 @@ function buildEditorHtml(content: string, lang: string): string {
       JSON.stringify({ type: 'change', content: editor.getValue() })
     );
   });
-  // Receive content updates from React Native
   function handleMsg(raw) {
     try {
       var msg = JSON.parse(raw);
@@ -136,12 +151,28 @@ export default function EditorScreen() {
   // ── Serial monitor ──
   const [serialPorts, setSerialPorts] = useState<string[]>([]);
   const [selectedPort, setSelectedPort] = useState<string | null>(null);
-  const [baudRate, setBaudRate] = useState(115200);
+  const [baudRate] = useState(115200);
   const [serialOutput, setSerialOutput] = useState<string[]>([]);
   const [serialInput, setSerialInput] = useState("");
   const [serialConnected, setSerialConnected] = useState(false);
   const serialWsRef = useRef<WebSocket | null>(null);
   const serialRef = useRef<ScrollView>(null);
+
+  // ── Agent ──
+  const [agentVisible, setAgentVisible] = useState(false);
+  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
+  const [agentInput, setAgentInput] = useState("");
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentImages, setAgentImages] = useState<AgentImage[]>([]);
+  const agentScrollRef = useRef<ScrollView>(null);
+
+  // ── Git ──
+  const [gitStagedFiles, setGitStagedFiles] = useState<string[]>([]);
+  const [gitUnstagedFiles, setGitUnstagedFiles] = useState<string[]>([]);
+  const [commitMsg, setCommitMsg] = useState("");
+  const [gitRunning, setGitRunning] = useState(false);
+  const [gitLog, setGitLog] = useState<string[]>([]);
+  const gitLogRef = useRef<ScrollView>(null);
 
   // ── Load files from API ──
   const loadFiles = useCallback(async () => {
@@ -164,11 +195,8 @@ export default function EditorScreen() {
     setEditorContent(DEMO_FILES[0].content);
   }, [projectId]);
 
-  useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
+  useEffect(() => { loadFiles(); }, [loadFiles]);
 
-  // Switch file — push new content into WebView
   const selectFile = (file: ProjectFile) => {
     if (file.id === selectedFile?.id) return;
     setSelectedFile(file);
@@ -189,7 +217,6 @@ export default function EditorScreen() {
         body: JSON.stringify({ path: selectedFile.path, content: editorContent }),
       });
       setIsDirty(false);
-      // Update local cache
       setFiles((prev) =>
         prev.map((f) => (f.id === selectedFile.id ? { ...f, content: editorContent } : f))
       );
@@ -282,8 +309,181 @@ export default function EditorScreen() {
     }
   };
 
-  // Cleanup serial on unmount
   useEffect(() => () => { serialWsRef.current?.close(); }, []);
+
+  // ── Agent ──
+  const pickAgentImages = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsMultipleSelection: true,
+      base64: true,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      const imgs: AgentImage[] = result.assets
+        .filter((a) => a.base64)
+        .map((a) => ({
+          mediaType: a.mimeType ?? "image/jpeg",
+          data: a.base64!,
+          preview: a.uri,
+        }));
+      setAgentImages((p) => [...p, ...imgs].slice(0, 4));
+    }
+  };
+
+  const takeAgentPhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") return;
+    const result = await ImagePicker.launchCameraAsync({
+      base64: true,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      const a = result.assets[0];
+      setAgentImages((p) => [...p, {
+        mediaType: a.mimeType ?? "image/jpeg",
+        data: a.base64!,
+        preview: a.uri,
+      }].slice(0, 4));
+    }
+  };
+
+  const sendAgent = useCallback(async () => {
+    const text = agentInput.trim();
+    if ((!text && !agentImages.length) || agentRunning) return;
+    const imgs = [...agentImages];
+    setAgentInput("");
+    setAgentImages([]);
+    setAgentRunning(true);
+
+    const userMsg: AgentMessage = {
+      role: "user",
+      text: text || "(image)",
+      images: imgs.map((i) => ({ preview: i.preview })),
+    };
+
+    // Add user message + placeholder assistant message
+    setAgentMessages((prev) => [
+      ...prev,
+      userMsg,
+      { role: "assistant", text: "…" },
+    ]);
+
+    // Build history (all previous messages + new user message)
+    const historyForApi = [...agentMessages, userMsg]
+      .filter((m) => m.text)
+      .map((m) => ({
+        role: m.role,
+        content: m.text,
+      }));
+
+    // Append images on the last message if present
+    if (imgs.length) {
+      const last = historyForApi[historyForApi.length - 1];
+      (last as Record<string, unknown>).images = imgs.map((i) => ({
+        type: "image",
+        mediaType: i.mediaType,
+        data: i.data,
+      }));
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/agent/run`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          provider: "anthropic",
+          model: "claude-sonnet-4-6",
+          projectId,
+          messages: historyForApi,
+          boardType: board.id,
+        }),
+      });
+
+      const raw = await res.text();
+      let responseText = "";
+      for (const line of raw.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const chunk = line.slice(6);
+        if (chunk === "[DONE]") break;
+        try {
+          const ev = JSON.parse(chunk) as { type: string; text?: string };
+          if (ev.type === "text" && ev.text) responseText += ev.text;
+        } catch { /* ignore */ }
+      }
+
+      setAgentMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 ? { ...m, text: responseText || "No response." } : m
+        )
+      );
+    } catch (e) {
+      setAgentMessages((prev) =>
+        prev.map((m, i) =>
+          i === prev.length - 1 ? { ...m, text: `Error: ${String(e)}` } : m
+        )
+      );
+    } finally {
+      setAgentRunning(false);
+      setTimeout(() => agentScrollRef.current?.scrollToEnd({ animated: true }), 150);
+    }
+  }, [agentInput, agentImages, agentRunning, agentMessages, projectId, board.id]);
+
+  // ── Git ──
+  const gitOp = async (op: "status" | "stage-all" | "commit" | "push" | "pull") => {
+    setGitRunning(true);
+    try {
+      if (op === "status") {
+        const res = await fetch(`${API_URL}/api/git/${projectId}/status`, { headers: authHeaders() });
+        const data = await res.json() as { staged?: string[]; not_added?: string[]; modified?: string[] };
+        setGitStagedFiles(data.staged ?? []);
+        setGitUnstagedFiles([...(data.not_added ?? []), ...(data.modified ?? [])]);
+        setGitLog((l) => [...l, `✓ Status refreshed`]);
+      } else if (op === "stage-all") {
+        await fetch(`${API_URL}/api/git/${projectId}/stage-all`, {
+          method: "POST", headers: authHeaders(),
+        });
+        setGitLog((l) => [...l, `✓ All files staged`]);
+        await gitOp("status");
+        return; // avoid double setGitRunning(false)
+      } else if (op === "commit") {
+        if (!commitMsg.trim()) {
+          setGitLog((l) => [...l, `✗ Enter a commit message`]);
+          return;
+        }
+        await fetch(`${API_URL}/api/git/${projectId}/commit`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ message: commitMsg }),
+        });
+        setCommitMsg("");
+        setGitLog((l) => [...l, `✓ Committed: "${commitMsg}"`]);
+        await gitOp("status");
+        return;
+      } else if (op === "push") {
+        await fetch(`${API_URL}/api/git/${projectId}/push`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({}),
+        });
+        setGitLog((l) => [...l, `✓ Pushed to remote`]);
+      } else if (op === "pull") {
+        await fetch(`${API_URL}/api/git/${projectId}/pull`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({}),
+        });
+        setGitLog((l) => [...l, `✓ Pulled from remote`]);
+      }
+    } catch (e) {
+      setGitLog((l) => [...l, `✗ ${String(e)}`]);
+    } finally {
+      setGitRunning(false);
+      setTimeout(() => gitLogRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  };
 
   const lang = selectedFile?.path.endsWith(".py")
     ? "python"
@@ -333,6 +533,11 @@ export default function EditorScreen() {
           ) : (
             <Text style={s.flashBtnText}>↑ Flash</Text>
           )}
+        </TouchableOpacity>
+
+        {/* AI Agent button */}
+        <TouchableOpacity style={s.agentBtn} onPress={() => setAgentVisible(true)}>
+          <Text style={s.agentBtnText}>⚡ AI</Text>
         </TouchableOpacity>
       </View>
 
@@ -384,16 +589,17 @@ export default function EditorScreen() {
       </View>
 
       {/* ── Bottom panel ── */}
-      <View style={s.bottomPanel}>
+      <View style={[s.bottomPanel, bottomTab === "git" && { height: 260 }]}>
         {/* Tab bar */}
         <View style={s.bottomTabBar}>
-          {(["terminal", "serial", "ports"] as BottomTab[]).map((t) => (
+          {(["terminal", "serial", "ports", "git"] as BottomTab[]).map((t) => (
             <TouchableOpacity
               key={t}
               style={[s.bottomTab, bottomTab === t && s.bottomTabActive]}
               onPress={() => {
                 setBottomTab(t);
                 if (t === "ports") refreshPorts();
+                if (t === "git") gitOp("status");
               }}
             >
               <Text style={[s.bottomTabText, bottomTab === t && s.bottomTabTextActive]}>
@@ -520,6 +726,79 @@ export default function EditorScreen() {
             </ScrollView>
           </View>
         )}
+
+        {/* Git */}
+        {bottomTab === "git" && (
+          <View style={{ flex: 1 }}>
+            {/* Git action buttons */}
+            <View style={s.gitToolbar}>
+              <TouchableOpacity
+                style={[s.gitBtn, gitRunning && s.toolBtnDisabled]}
+                onPress={() => gitOp("stage-all")}
+                disabled={gitRunning}
+              >
+                <Text style={s.gitBtnText}>+ Stage All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.gitBtn, gitRunning && s.toolBtnDisabled]}
+                onPress={() => gitOp("push")}
+                disabled={gitRunning}
+              >
+                <Text style={s.gitBtnText}>↑ Push</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.gitBtn, gitRunning && s.toolBtnDisabled]}
+                onPress={() => gitOp("pull")}
+                disabled={gitRunning}
+              >
+                <Text style={s.gitBtnText}>↓ Pull</Text>
+              </TouchableOpacity>
+              {gitRunning && <ActivityIndicator size="small" color="#f59e0b" />}
+            </View>
+
+            {/* Commit input row */}
+            <View style={s.gitCommitRow}>
+              <TextInput
+                style={s.gitCommitInput}
+                value={commitMsg}
+                onChangeText={setCommitMsg}
+                placeholder="Commit message…"
+                placeholderTextColor="#52525b"
+                returnKeyType="send"
+                onSubmitEditing={() => gitOp("commit")}
+              />
+              <TouchableOpacity
+                style={[s.sendBtn, { backgroundColor: "#f59e0b" }, (!commitMsg.trim() || gitRunning) && s.toolBtnDisabled]}
+                onPress={() => gitOp("commit")}
+                disabled={!commitMsg.trim() || gitRunning}
+              >
+                <Text style={[s.sendBtnText, { color: "#09090b" }]}>✓</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Git log + status */}
+            <ScrollView ref={gitLogRef} style={s.outputPane} contentContainerStyle={{ padding: 6 }}>
+              {gitUnstagedFiles.length > 0 && (
+                <Text style={[s.outputLine, { color: "#f59e0b", marginBottom: 2 }]}>
+                  Modified: {gitUnstagedFiles.join(", ")}
+                </Text>
+              )}
+              {gitStagedFiles.length > 0 && (
+                <Text style={[s.outputLine, { color: "#4ade80", marginBottom: 2 }]}>
+                  Staged: {gitStagedFiles.join(", ")}
+                </Text>
+              )}
+              {gitLog.map((l, i) => (
+                <Text key={i} style={[s.outputLine, l.startsWith("✓") ? s.colorSuccess : l.startsWith("✗") ? s.colorError : null]}>
+                  {l}
+                </Text>
+              ))}
+              {gitLog.length === 0 && gitStagedFiles.length === 0 && gitUnstagedFiles.length === 0 && (
+                <Text style={s.outputPlaceholder}>// Git status will appear here</Text>
+              )}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       {/* ── Board selector modal ── */}
@@ -554,6 +833,109 @@ export default function EditorScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ── AI Agent modal ── */}
+      <Modal visible={agentVisible} transparent animationType="slide">
+        <View style={s.agentModalBackdrop}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={s.agentModal}
+          >
+            {/* Agent header */}
+            <View style={s.agentHeader}>
+              <Text style={s.agentTitle}>⚡ AI <Text style={{ color: "#f59e0b" }}>AGENT</Text></Text>
+              <TouchableOpacity onPress={() => setAgentVisible(false)} style={s.agentCloseBtn}>
+                <Text style={s.agentCloseBtnText}>✕ Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Messages */}
+            <ScrollView
+              ref={agentScrollRef}
+              style={s.agentMessages}
+              contentContainerStyle={{ padding: 12, gap: 10 }}
+            >
+              {agentMessages.length === 0 ? (
+                <View style={s.agentEmpty}>
+                  <Text style={s.agentEmptyText}>Ask me to edit code, fix errors, or explain your circuit.</Text>
+                  <Text style={s.agentEmptyText}>📷 You can attach photos of schematics or components!</Text>
+                </View>
+              ) : (
+                agentMessages.map((m, i) => (
+                  <View key={i} style={[s.agentMsgRow, m.role === "user" ? s.agentMsgRowUser : null]}>
+                    {/* Image thumbnails for user messages */}
+                    {m.role === "user" && m.images && m.images.length > 0 && (
+                      <View style={s.agentImgRow}>
+                        {m.images.map((img, j) => (
+                          <Image
+                            key={j}
+                            source={{ uri: img.preview }}
+                            style={s.agentThumb}
+                          />
+                        ))}
+                      </View>
+                    )}
+                    <View style={[s.agentBubble, m.role === "user" ? s.agentBubbleUser : s.agentBubbleAssistant]}>
+                      <Text style={[s.agentBubbleText, m.role === "user" ? s.agentBubbleTextUser : null]}>
+                        {m.text === "…" && agentRunning && i === agentMessages.length - 1 ? "Thinking…" : m.text}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            {/* Pending image thumbnails */}
+            {agentImages.length > 0 && (
+              <View style={s.agentPendingImgs}>
+                {agentImages.map((img, i) => (
+                  <View key={i} style={{ position: "relative" }}>
+                    <Image source={{ uri: img.preview }} style={s.agentPendingThumb} />
+                    <TouchableOpacity
+                      style={s.agentRemoveImg}
+                      onPress={() => setAgentImages((p) => p.filter((_, j) => j !== i))}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 8, fontWeight: "700" }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Input row */}
+            <View style={s.agentInputRow}>
+              <TouchableOpacity style={s.agentImgBtn} onPress={pickAgentImages}>
+                <Text style={s.agentImgBtnText}>🖼</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.agentImgBtn} onPress={takeAgentPhoto}>
+                <Text style={s.agentImgBtnText}>📷</Text>
+              </TouchableOpacity>
+              <TextInput
+                style={s.agentInput}
+                value={agentInput}
+                onChangeText={setAgentInput}
+                placeholder="Ask to edit code, flash, debug…"
+                placeholderTextColor="#52525b"
+                multiline
+                returnKeyType="send"
+                blurOnSubmit
+                onSubmitEditing={sendAgent}
+              />
+              <TouchableOpacity
+                style={[s.agentSendBtn, (agentRunning || (!agentInput.trim() && !agentImages.length)) && s.toolBtnDisabled]}
+                onPress={sendAgent}
+                disabled={agentRunning || (!agentInput.trim() && !agentImages.length)}
+              >
+                {agentRunning ? (
+                  <ActivityIndicator size="small" color="#09090b" />
+                ) : (
+                  <Text style={s.agentSendBtnText}>↑</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -567,7 +949,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 10,
-    gap: 8,
+    gap: 6,
     backgroundColor: "#18181b",
     borderBottomWidth: 1,
     borderBottomColor: "#27272a",
@@ -576,35 +958,45 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#3f3f46",
-    maxWidth: 150,
+    maxWidth: 130,
   },
-  boardBtnText: { color: "#a1a1aa", fontSize: 11, flex: 1 },
+  boardBtnText: { color: "#a1a1aa", fontSize: 10, flex: 1 },
   chevron: { color: "#71717a", fontSize: 9 },
   toolBtn: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "#3f3f46",
-    minWidth: 44,
+    minWidth: 40,
     alignItems: "center",
   },
-  toolBtnText: { color: "#a1a1aa", fontSize: 12, fontWeight: "500" },
+  toolBtnText: { color: "#a1a1aa", fontSize: 11, fontWeight: "500" },
   toolBtnDisabled: { opacity: 0.45 },
   flashBtn: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6,
     backgroundColor: "#f59e0b",
-    minWidth: 60,
+    minWidth: 55,
     alignItems: "center",
   },
-  flashBtnText: { color: "#09090b", fontSize: 12, fontWeight: "700" },
+  flashBtnText: { color: "#09090b", fontSize: 11, fontWeight: "700" },
+  agentBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.5)",
+    backgroundColor: "rgba(245,158,11,0.1)",
+    alignItems: "center",
+  },
+  agentBtnText: { color: "#f59e0b", fontSize: 11, fontWeight: "700" },
 
   // File tabs
   tabs: {
@@ -643,7 +1035,7 @@ const s = StyleSheet.create({
     borderBottomColor: "#27272a",
   },
   bottomTab: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     justifyContent: "center",
     borderBottomWidth: 2,
     borderBottomColor: "transparent",
@@ -736,6 +1128,43 @@ const s = StyleSheet.create({
   portDot: { color: "#4ade80", fontSize: 10 },
   portName: { fontFamily: "monospace", fontSize: 12, color: "#a1a1aa", flex: 1 },
 
+  // Git
+  gitToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    padding: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#27272a",
+  },
+  gitBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.3)",
+    backgroundColor: "rgba(245,158,11,0.06)",
+  },
+  gitBtnText: { color: "#f59e0b", fontSize: 10, fontWeight: "600" },
+  gitCommitRow: {
+    flexDirection: "row",
+    gap: 6,
+    padding: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#27272a",
+  },
+  gitCommitInput: {
+    flex: 1,
+    height: 28,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#3f3f46",
+    backgroundColor: "#18181b",
+    paddingHorizontal: 8,
+    color: "#e4e4e7",
+    fontSize: 12,
+  },
+
   // Board modal
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   modalSheet: {
@@ -764,4 +1193,136 @@ const s = StyleSheet.create({
   },
   boardItemName: { color: "#e4e4e7", fontSize: 14, fontWeight: "500" },
   boardItemPlatform: { color: "#71717a", fontSize: 11, marginTop: 2 },
+
+  // Agent modal
+  agentModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end",
+  },
+  agentModal: {
+    backgroundColor: "#0c0d1a",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#252840",
+    height: "85%",
+    display: "flex",
+    flexDirection: "column",
+  },
+  agentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1a1d2e",
+  },
+  agentTitle: {
+    fontFamily: "monospace",
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#f1f5f9",
+    letterSpacing: 1,
+  },
+  agentCloseBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#252840",
+    backgroundColor: "#10121f",
+  },
+  agentCloseBtnText: { color: "#94a3b8", fontSize: 11 },
+  agentMessages: { flex: 1 },
+  agentEmpty: { padding: 20, gap: 8 },
+  agentEmptyText: { color: "#475569", fontSize: 12, lineHeight: 18 },
+  agentMsgRow: { flexDirection: "column", gap: 4, marginBottom: 8 },
+  agentMsgRowUser: { alignItems: "flex-end" },
+  agentImgRow: { flexDirection: "row", gap: 4, flexWrap: "wrap" },
+  agentThumb: { width: 72, height: 72, borderRadius: 8, borderWidth: 1, borderColor: "#252840" },
+  agentBubble: {
+    maxWidth: "85%",
+    borderRadius: 10,
+    padding: 10,
+  },
+  agentBubbleUser: {
+    backgroundColor: "#f59e0b",
+  },
+  agentBubbleAssistant: {
+    backgroundColor: "#10121f",
+    borderWidth: 1,
+    borderColor: "#1a1d2e",
+  },
+  agentBubbleText: {
+    fontSize: 12,
+    color: "#94a3b8",
+    lineHeight: 18,
+    fontFamily: "monospace",
+  },
+  agentBubbleTextUser: { color: "#09090b", fontFamily: "monospace" },
+  agentPendingImgs: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#1a1d2e",
+  },
+  agentPendingThumb: { width: 48, height: 48, borderRadius: 6, borderWidth: 1, borderColor: "#252840" },
+  agentRemoveImg: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#f87171",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  agentInputRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "flex-end",
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#1a1d2e",
+  },
+  agentImgBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#252840",
+    backgroundColor: "#10121f",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  agentImgBtnText: { fontSize: 16 },
+  agentInput: {
+    flex: 1,
+    minHeight: 36,
+    maxHeight: 100,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#252840",
+    backgroundColor: "#10121f",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: "#e4e4e7",
+    fontSize: 12,
+    fontFamily: "monospace",
+  },
+  agentSendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "#f59e0b",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  agentSendBtnText: { color: "#09090b", fontSize: 18, fontWeight: "800" },
 });

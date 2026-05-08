@@ -10,29 +10,17 @@
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:4000",
-        "EXPO_PUBLIC_SYNC_URL": "ws://10.0.2.2:1234"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.edge-lab.app",
-        "EXPO_PUBLIC_SYNC_URL": "wss://sync.edge-lab.app"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.edge-lab.app",
-        "EXPO_PUBLIC_SYNC_URL": "wss://sync.edge-lab.app"
       }
     }
   },

@@ -18,7 +18,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -257,22 +256,20 @@ export default function EditorScreen() {
   }, [selectedFile, editorContent, files, projectId]);
 
   // ── New file ──
-  const newFile = () => {
-    Alert.prompt(
-      "New File",
-      "Enter filename (e.g. sensors.h)",
-      async (name) => {
-        if (!name?.trim()) return;
-        const f: ProjectFile = { id: name.trim(), path: name.trim(), content: "" };
-        const updated = [...files, f];
-        setFiles(updated);
-        await persistFiles(projectId, updated);
-        selectFile(f);
-      },
-      "plain-text",
-      "",
-      "default"
-    );
+  const [newFileModal, setNewFileModal] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+
+  const newFile = () => { setNewFileName(""); setNewFileModal(true); };
+
+  const confirmNewFile = async () => {
+    const name = newFileName.trim();
+    if (!name) return;
+    const f: ProjectFile = { id: name, path: name, content: "" };
+    const updated = [...files, f];
+    setFiles(updated);
+    await persistFiles(projectId, updated);
+    setNewFileModal(false);
+    selectFile(f);
   };
 
   // ── Build (mobile stub — show helpful message) ──
@@ -513,6 +510,36 @@ export default function EditorScreen() {
           </View>
         )}
       </View>
+
+      {/* ── New file modal ── */}
+      <Modal visible={newFileModal} transparent animationType="fade">
+        <Pressable style={s.modalBackdrop} onPress={() => setNewFileModal(false)}>
+          <Pressable>
+            <View style={[s.modalSheet, { paddingBottom: 24 }]}>
+              <Text style={s.modalTitle}>New File</Text>
+              <TextInput
+                style={s.input}
+                value={newFileName}
+                onChangeText={setNewFileName}
+                placeholder="e.g. sensors.h"
+                placeholderTextColor="#52525b"
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={confirmNewFile}
+              />
+              <TouchableOpacity
+                style={[s.createBtn, !newFileName.trim() && s.createBtnDisabled]}
+                onPress={confirmNewFile}
+                disabled={!newFileName.trim()}
+              >
+                <Text style={s.createBtnText}>Create</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* ── Board modal ── */}
       <Modal visible={boardModal} transparent animationType="slide">

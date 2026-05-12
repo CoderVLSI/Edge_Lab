@@ -9,6 +9,7 @@ import { aiRouter } from "./routes/ai";
 import { gitRouter } from "./routes/git";
 import { agentRouter } from "./routes/agent";
 import { createSerialRouter } from "./routes/serial";
+import { searchRouter } from "./routes/search";
 import { authMiddleware } from "./middleware/auth";
 
 const app = new Hono();
@@ -52,6 +53,8 @@ app.route("/api/git", gitRouter);
 app.route("/api/agent", agentRouter);
 // Serial bridge — no auth, secured by local network access
 app.route("/api/serial", createSerialRouter(upgradeWebSocket));
+// Codebase search — no auth (project files are already sandboxed by projectId)
+app.route("/api/projects", searchRouter);
 
 const port = Number(process.env.PORT ?? 4000);
 

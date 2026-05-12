@@ -44,6 +44,34 @@ sqlite.exec(`
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_project_files_path
     ON project_files(project_id, path);
+
+  -- Codebase index: one row per ~40-line chunk, embedding stored as BLOB
+  CREATE TABLE IF NOT EXISTS file_chunks (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_path    TEXT NOT NULL,
+    chunk_index  INTEGER NOT NULL,
+    content      TEXT NOT NULL,
+    start_line   INTEGER NOT NULL,
+    end_line     INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    embedding    BLOB,
+    indexed_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_file_chunks_project
+    ON file_chunks(project_id);
+  CREATE INDEX IF NOT EXISTS idx_file_chunks_file
+    ON file_chunks(project_id, file_path);
+
+  -- FTS5 virtual table for fast BM25 keyword search
+  CREATE VIRTUAL TABLE IF NOT EXISTS file_chunks_fts USING fts5(
+    content,
+    file_path,
+    project_id UNINDEXED,
+    start_line UNINDEXED,
+    end_line   UNINDEXED,
+    tokenize   = 'porter ascii'
+  );
 `);
 
 export const isUsingPostgres = !!process.env.DATABASE_URL;

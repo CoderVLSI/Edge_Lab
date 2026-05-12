@@ -8,6 +8,7 @@ import { join, dirname, relative, resolve } from "path";
 import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { getProjectPath } from "../git-service";
+import { searchHybrid, searchText, searchSemantic, getChunkCount } from "../indexer.js";
 
 const execAsync = promisify(exec);
 
@@ -40,6 +41,18 @@ export interface ToolResult {
 
 // ── Tool definitions (sent to the LLM) ─────────────────────────────────────
 export const TOOL_DEFS: ToolDef[] = [
+  {
+    name: "search_codebase",
+    description: "Search all project files using semantic + keyword search. Use this FIRST when you need to find where something is defined, used, or related to a concept. Faster than reading every file.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Natural language or code query, e.g. 'LED blink function' or 'SHT31 sensor init'" },
+        mode:  { type: "string", description: "Search mode: 'hybrid' (default), 'semantic', or 'text'", enum: ["hybrid", "semantic", "text"] },
+      },
+      required: ["query"],
+    },
+  },
   {
     name: "read_file",
     description: "Read the full content of a file in the project. Use this before editing.",
@@ -220,6 +233,29 @@ async function runTool(name: string, input: Record<string, string>, projectId: s
   const projectDir = getProjectPath(projectId);
 
   switch (name) {
+    case "search_codebase": {
+      const q    = input.query?.trim();
+      const mode = (input.mode ?? "hybrid") as "hybrid" | "semantic" | "text";
+      if (!q) return "No query provided.";
+
+      const count = getChunkCount(projectId);
+      if (count === 0) {
+        return "Codebase not indexed yet. Use the Index button in the toolbar or call index endpoint first.";
+      }
+
+      let results;
+      if (mode === "text")     results = searchText(projectId, q);
+      else if (mode === "semantic") results = await searchSemantic(projectId, q);
+      else                     results = await searchHybrid(projectId, q);
+
+      if (!results.length) return `No results found for "${q}" in ${count} indexed chunks.`;
+
+      const lines = results.map((r, i) =>
+        `[${i + 1}] ${r.filePath} lines ${r.startLine}-${r.endLine} (score: ${r.score})\n${r.content.trim().slice(0, 400)}`
+      );
+      return `Found ${results.length} result(s) for "${q}":\n\n${lines.join("\n\n---\n\n")}`;
+    }
+
     case "read_file": {
       const path = safePath(projectId, input.path);
       const content = await readFile(path, "utf-8");

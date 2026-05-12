@@ -10,6 +10,7 @@ import { gitRouter } from "./routes/git";
 import { agentRouter } from "./routes/agent";
 import { createSerialRouter } from "./routes/serial";
 import { searchRouter } from "./routes/search";
+import { boardsRouter } from "./routes/boards";
 import { authMiddleware } from "./middleware/auth";
 
 const app = new Hono();
@@ -55,6 +56,8 @@ app.route("/api/agent", agentRouter);
 app.route("/api/serial", createSerialRouter(upgradeWebSocket));
 // Codebase search — no auth (project files are already sandboxed by projectId)
 app.route("/api/projects", searchRouter);
+// Board registry — public, no auth needed
+app.route("/api/boards", boardsRouter);
 
 const port = Number(process.env.PORT ?? 4000);
 

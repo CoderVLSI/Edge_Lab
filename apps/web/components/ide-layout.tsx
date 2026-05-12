@@ -66,7 +66,7 @@ const ALL_FILE_NAMES = ALL_PALETTE_FILES.map(f => f.name);
 export function IdeLayout({ projectId }: { projectId: string }) {
   const [mode, setMode] = useState<Mode>("firmware");
   const [selectedFile, setSelectedFile] = useState<FileTreeNode | null>(DEMO_FILES[0].children![0]);
-  const [board, setBoard] = useState<Board>(BOARDS[3]);
+  const [board, setBoard] = useState<Board>(BOARDS[0]); // ESP32 Dev Module
   const [sidebarTab, setSidebarTab] = useState<"files" | "git">("files");
   const [bottomTab, setBottomTab] = useState<BottomTab>("terminal");
   const [syncStatus, setSyncStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
@@ -390,6 +390,7 @@ export function IdeLayout({ projectId }: { projectId: string }) {
 
       {/* Ctrl+K search palette */}
       <SearchPalette
+        projectId={projectId}
         files={ALL_PALETTE_FILES}
         isOpen={showSearchPalette}
         onClose={() => setShowSearchPalette(false)}

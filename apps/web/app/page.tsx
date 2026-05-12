@@ -1,4 +1,14 @@
 import Link from "next/link";
+import {
+  Zap,
+  ChevronRight,
+  Cpu,
+  Radio,
+  GitBranch,
+  Terminal,
+  Layers,
+  MonitorSpeaker,
+} from "lucide-react";
 
 export default function Home() {
   return (
@@ -7,250 +17,441 @@ export default function Home() {
       background: "var(--bg)",
       color: "var(--t1)",
       fontFamily: "var(--font-ui)",
-      overflow: "hidden",
-      position: "relative",
+      display: "flex",
+      flexDirection: "column",
     }}>
 
-      {/* Circuit grid */}
-      <div style={{
-        position: "absolute", inset: 0, pointerEvents: "none",
-        backgroundImage: "linear-gradient(var(--b1) 1px, transparent 1px), linear-gradient(90deg, var(--b1) 1px, transparent 1px)",
-        backgroundSize: "48px 48px",
-      }} />
-
-      {/* Amber glow blob — top center */}
-      <div style={{
-        position: "absolute", top: "-120px", left: "50%", transform: "translateX(-50%)",
-        width: 600, height: 400,
-        background: "radial-gradient(ellipse, rgba(245,158,11,0.12) 0%, transparent 70%)",
-        pointerEvents: "none",
-      }} />
-
-      {/* Nav */}
+      {/* ── Titlebar / Nav ───────────────────────────────────────────────── */}
       <nav style={{
-        position: "relative",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "20px 48px",
+        height: 38,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 16px",
         borderBottom: "1px solid var(--b1)",
-      }} className="animate-fade-in">
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="Edge Lab" width={28} height={28} style={{ borderRadius: 5 }} />
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, letterSpacing: "0.06em" }}>
-            EDGE <span style={{ color: "var(--amber)" }}>LAB</span>
+        background: "var(--s1)",
+        flexShrink: 0,
+      }}>
+        {/* Logo */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontFamily: "var(--font-mono)", fontSize: 12,
+          fontWeight: 600, color: "var(--amber)",
+          letterSpacing: "0.04em",
+        }}>
+          <Zap size={13} />
+          edgelab
+          <span style={{
+            marginLeft: 4,
+            fontFamily: "var(--font-mono)", fontSize: 9,
+            color: "var(--t4)", fontWeight: 400,
+            background: "var(--s3)", border: "1px solid var(--b2)",
+            borderRadius: "var(--r1)", padding: "1px 5px",
+          }}>
+            v0.1.0
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Link href="/dashboard" style={{ color: "var(--t2)", fontSize: 13, textDecoration: "none", fontFamily: "var(--font-display)", fontWeight: 600 }}>
+
+        {/* Nav links */}
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+          {["Features", "Docs", "GitHub"].map((item) => (
+            <button
+              key={item}
+              style={{
+                background: "transparent", border: "none",
+                color: "var(--t3)", fontFamily: "var(--font-ui)", fontSize: 12,
+                cursor: "pointer", padding: "0 12px", height: 38,
+                transition: "color 0.1s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--t1)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--t3)"; }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+
+        {/* CTAs */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link href="/dashboard" style={{
+            fontFamily: "var(--font-ui)", fontSize: 12,
+            color: "var(--t2)", textDecoration: "none",
+            padding: "0 8px",
+          }}>
             Dashboard
           </Link>
-          <Link href="/editor/demo" className="btn-amber" style={{ padding: "7px 16px", fontSize: 12 }}>
+          <Link href="/editor/demo" className="btn-amber" style={{ height: 26, padding: "0 12px", fontSize: 11 }}>
             Try Demo
           </Link>
         </div>
       </nav>
 
-      {/* Hero */}
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section style={{
-        position: "relative",
-        maxWidth: 900,
+        maxWidth: 1000,
         margin: "0 auto",
-        padding: "100px 48px 60px",
-        textAlign: "center",
+        padding: "72px 48px 56px",
+        width: "100%",
       }}>
-
-        {/* Badge */}
-        <div className="animate-fade-up" style={{
-          display: "inline-flex", alignItems: "center", gap: 8,
-          background: "var(--amber-lo)", border: "1px solid rgba(245,158,11,0.25)",
-          borderRadius: 99, padding: "5px 14px",
-          marginBottom: 36,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--amber)", display: "inline-block", animation: "pulse-amber 2s infinite" }} />
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--amber)", letterSpacing: "0.08em" }}>
-            AI-POWERED EMBEDDED IDE
-          </span>
+        {/* Eyebrow */}
+        <div className="badge badge-amber" style={{ marginBottom: 24 }}>
+          <span className="pulse-dot" style={{
+            width: 5, height: 5, borderRadius: "50%",
+            background: "var(--amber)", display: "inline-block", marginRight: 5,
+          }} />
+          AI-POWERED EMBEDDED IDE
         </div>
 
         {/* Headline */}
-        <h1 className="animate-fade-up-d1" style={{
-          fontFamily: "var(--font-display)",
-          fontSize: "clamp(52px, 8vw, 88px)",
-          fontWeight: 800,
-          lineHeight: 1.0,
-          letterSpacing: "-0.03em",
-          margin: "0 0 24px",
+        <h1 style={{
+          fontFamily: "var(--font-ui)",
+          fontWeight: 700,
+          fontSize: "clamp(36px, 5vw, 58px)",
+          lineHeight: 1.08,
+          letterSpacing: "-0.025em",
+          margin: "0 0 20px",
+          maxWidth: 680,
         }}>
-          Code. Flash.{" "}
-          <span style={{
-            color: "var(--amber)",
-            textShadow: "0 0 40px rgba(245,158,11,0.4)",
-          }}>
-            Verify.
-          </span>
+          Write firmware.{" "}
+          <span style={{ color: "var(--amber)" }}>Flash boards.</span>
           <br />
-          <span style={{ color: "var(--t3)" }}>From any device.</span>
+          Ship from anywhere.
         </h1>
 
-        <p className="animate-fade-up-d2" style={{
-          fontFamily: "var(--font-ui)",
-          fontSize: 18,
+        <p style={{
+          fontSize: 15,
           color: "var(--t2)",
-          lineHeight: 1.65,
-          maxWidth: 580,
-          margin: "0 auto 44px",
-          fontWeight: 300,
+          lineHeight: 1.7,
+          maxWidth: 520,
+          margin: "0 0 36px",
+          fontWeight: 400,
         }}>
-          Edge Lab is an AI agent IDE for Arduino, ESP32 and embedded systems.
-          Write firmware, flash boards, read serial output — all from your browser.
+          Edge Lab is a professional IDE for Arduino, ESP32 and embedded systems — with
+          an AI agent that compiles, flashes, reads serial output, and fixes errors
+          autonomously.
         </p>
 
         {/* CTAs */}
-        <div className="animate-fade-up-d3" style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <Link href="/dashboard" className="btn-amber" style={{ fontSize: 14, padding: "12px 28px" }}>
-            Open Dashboard →
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Link href="/dashboard" className="btn-amber" style={{ fontSize: 13, padding: "7px 18px" }}>
+            Open Workspace <ChevronRight size={13} />
           </Link>
-          <Link href="/editor/demo" className="btn-ghost" style={{ fontSize: 14, padding: "12px 28px" }}>
-            Try the Demo
+          <Link href="/editor/demo" className="btn" style={{ fontSize: 13, padding: "7px 16px" }}>
+            Live Demo
           </Link>
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--t4)", marginLeft: 4,
+          }}>
+            No account required
+          </span>
         </div>
 
-        {/* Terminal mockup */}
-        <div className="animate-fade-up-d4" style={{
-          marginTop: 64,
+        {/* Platform pills */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          marginTop: 28,
+        }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)", marginRight: 4 }}>
+            RUNS ON
+          </span>
+          {["Web · Next.js 15", "Desktop · Tauri 2", "Mobile · Expo"].map((p) => (
+            <span key={p} style={{
+              fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)",
+              background: "var(--s2)", border: "1px solid var(--b2)",
+              borderRadius: "var(--r1)", padding: "2px 8px",
+            }}>
+              {p}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Code preview ─────────────────────────────────────────────────── */}
+      <section style={{
+        maxWidth: 1000,
+        margin: "0 auto",
+        padding: "0 48px 56px",
+        width: "100%",
+      }}>
+        <div style={{
           background: "var(--s1)",
           border: "1px solid var(--b2)",
-          borderRadius: 10,
+          borderRadius: "var(--r3)",
           overflow: "hidden",
-          textAlign: "left",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--b1)",
         }}>
-          {/* Window chrome */}
+          {/* Tab bar */}
           <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "10px 16px",
-            borderBottom: "1px solid var(--b1)",
+            display: "flex", alignItems: "center",
             background: "var(--s2)",
+            borderBottom: "1px solid var(--b1)",
+            padding: "0 0 0 0",
+            height: 32,
           }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#ef4444", opacity: 0.7 }} />
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", opacity: 0.7 }} />
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e", opacity: 0.7 }} />
-            <span style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--t3)" }}>
-              main.cpp — Edge Lab
-            </span>
+            {["main.cpp", "platformio.ini", "agent"].map((tab, i) => (
+              <div
+                key={tab}
+                style={{
+                  display: "flex", alignItems: "center",
+                  padding: "0 14px",
+                  height: "100%",
+                  fontFamily: "var(--font-mono)", fontSize: 11,
+                  color: i === 0 ? "var(--t1)" : "var(--t3)",
+                  borderRight: "1px solid var(--b1)",
+                  borderBottom: i === 0 ? "1px solid var(--amber)" : "1px solid transparent",
+                  background: i === 0 ? "var(--bg)" : "transparent",
+                  cursor: "pointer",
+                }}
+              >
+                {tab}
+              </div>
+            ))}
           </div>
-          {/* Code */}
-          <pre style={{
-            margin: 0,
-            padding: "20px 24px",
-            fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            lineHeight: 1.7,
-            color: "var(--t2)",
-            overflow: "hidden",
-          }}>{`<span style="color:var(--t3)">#include</span> <span style="color:var(--amber)">&lt;Arduino.h&gt;</span>
 
-<span style="color:var(--blue)">void</span> <span style="color:var(--green)">setup</span>() {
-  Serial.<span style="color:var(--cyan)">begin</span>(<span style="color:var(--amber)">115200</span>);
-  <span style="color:var(--blue)">pinMode</span>(LED_BUILTIN, OUTPUT);
-}
+          {/* Editor content */}
+          <div style={{ display: "flex" }}>
+            {/* Line numbers */}
+            <div style={{
+              padding: "16px 0",
+              background: "var(--s2)",
+              borderRight: "1px solid var(--b1)",
+              userSelect: "none",
+            }}>
+              {Array.from({ length: 18 }, (_, i) => (
+                <div key={i} style={{
+                  padding: "0 14px 0 16px",
+                  fontFamily: "var(--font-mono)", fontSize: 12,
+                  lineHeight: 1.7, color: "var(--t4)",
+                  textAlign: "right", minWidth: 44,
+                }}>
+                  {i + 1}
+                </div>
+              ))}
+            </div>
 
-<span style="color:var(--blue)">void</span> <span style="color:var(--green)">loop</span>() {
-  <span style="color:var(--blue)">digitalWrite</span>(LED_BUILTIN, HIGH);  <span style="color:var(--t3)">// ← AI wrote this</span>
-  <span style="color:var(--blue)">delay</span>(<span style="color:var(--amber)">500</span>);
-  <span style="color:var(--blue)">digitalWrite</span>(LED_BUILTIN, LOW);
-  <span style="color:var(--blue)">delay</span>(<span style="color:var(--amber)">500</span>);
-}`}</pre>
-          {/* Agent output */}
+            {/* Code */}
+            <div style={{ padding: "16px 20px", overflow: "auto", flex: 1 }}>
+              <pre style={{
+                margin: 0,
+                fontFamily: "var(--font-mono)", fontSize: 12,
+                lineHeight: 1.7, color: "var(--t2)",
+              }}>
+                <span style={{ color: "var(--t3)" }}>#include</span>
+                {` `}
+                <span style={{ color: "var(--orange)" }}>&lt;Arduino.h&gt;</span>
+                {`\n`}
+                <span style={{ color: "var(--t3)" }}>#include</span>
+                {` `}
+                <span style={{ color: "var(--orange)" }}>&lt;DHT.h&gt;</span>
+                {`\n\n`}
+                <span style={{ color: "var(--blue)" }}>const</span>
+                {` `}
+                <span style={{ color: "var(--blue)" }}>int</span>
+                {` `}
+                <span style={{ color: "var(--cyan)" }}>DHTPIN</span>
+                {` = `}
+                <span style={{ color: "var(--orange)" }}>4</span>
+                {`;\n`}
+                <span style={{ color: "var(--purple)" }}>DHT</span>
+                {` `}
+                <span style={{ color: "var(--cyan)" }}>dht</span>
+                {`(`}
+                <span style={{ color: "var(--cyan)" }}>DHTPIN</span>
+                {`, `}
+                <span style={{ color: "var(--purple)" }}>DHT22</span>
+                {`);\n\n`}
+                <span style={{ color: "var(--blue)" }}>void</span>
+                {` `}
+                <span style={{ color: "var(--green)" }}>setup</span>
+                {`() {\n  Serial.`}
+                <span style={{ color: "var(--green)" }}>begin</span>
+                {`(`}
+                <span style={{ color: "var(--orange)" }}>115200</span>
+                {`);\n  dht.`}
+                <span style={{ color: "var(--green)" }}>begin</span>
+                {`();\n}\n\n`}
+                <span style={{ color: "var(--blue)" }}>void</span>
+                {` `}
+                <span style={{ color: "var(--green)" }}>loop</span>
+                {`() {\n  float h = dht.`}
+                <span style={{ color: "var(--green)" }}>readHumidity</span>
+                {`();\n  float t = dht.`}
+                <span style={{ color: "var(--green)" }}>readTemperature</span>
+                {`();\n  Serial.`}
+                <span style={{ color: "var(--green)" }}>printf</span>
+                {`(`}
+                <span style={{ color: "var(--orange)" }}>&quot;T=%.1f H=%.1f\\n&quot;</span>
+                {`, t, h);\n  `}
+                <span style={{ color: "var(--blue)" }}>delay</span>
+                {`(`}
+                <span style={{ color: "var(--orange)" }}>2000</span>
+                {`);\n}`}
+              </pre>
+            </div>
+          </div>
+
+          {/* Agent output bar */}
           <div style={{
             borderTop: "1px solid var(--b1)",
             background: "var(--bg)",
-            padding: "12px 20px",
-            display: "flex", alignItems: "flex-start", gap: 10,
+            padding: "8px 16px",
+            display: "flex", alignItems: "center", gap: 8,
           }}>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--green)", marginTop: 1 }}>✓</span>
+            <Terminal size={11} style={{ color: "var(--green)", flexShrink: 0 }} />
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--t3)" }}>
-              Flashed ESP32 · Serial: <span style={{ color: "var(--green)" }}>"Blink!"</span> every 500ms · Verified ✓
+              Agent{" "}
+              <span style={{ color: "var(--green)" }}>compiled</span>
+              {" · "}
+              <span style={{ color: "var(--green)" }}>flashed ESP32</span>
+              {" · Serial: "}
+              <span style={{ color: "var(--amber)" }}>&quot;T=23.4 H=61.2&quot;</span>
+              {" · "}
+              <span style={{ color: "var(--green)" }}>verified</span>
             </span>
           </div>
         </div>
       </section>
 
-      {/* Feature grid */}
-      <section className="animate-fade-up-d5" style={{
-        maxWidth: 900,
+      {/* ── Feature grid ─────────────────────────────────────────────────── */}
+      <section style={{
+        maxWidth: 1000,
         margin: "0 auto",
-        padding: "40px 48px 100px",
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gap: 1,
-        background: "var(--b1)",
-        border: "1px solid var(--b1)",
-        borderRadius: 10,
-        overflow: "hidden",
+        padding: "0 48px 64px",
+        width: "100%",
       }}>
-        {[
-          {
-            icon: "⚡",
-            title: "Flash & Verify",
-            desc: "Agent compiles, uploads, opens the serial monitor, reads the output, and tells you if it's working.",
-          },
-          {
-            icon: "🤖",
-            title: "Multi-AI Agent",
-            desc: "Claude, GPT-4o, Gemini, OpenRouter, Ollama. Reads files, edits code, runs builds autonomously.",
-          },
-          {
-            icon: "📐",
-            title: "Schematics + PCB",
-            desc: "KiCad-native schematic and PCB viewer. Agent edits .kicad_sch files directly, runs DRC checks.",
-          },
-          {
-            icon: "🔄",
-            title: "Real-Time Sync",
-            desc: "Yjs CRDT — edit the same project from your phone, desktop app, and browser simultaneously.",
-          },
-          {
-            icon: "🖥",
-            title: "Desktop App",
-            desc: "Tauri-based native app with real serial port access via USB. Offline-first, opens local folders.",
-          },
-          {
-            icon: "🔌",
-            title: "Hardware Native",
-            desc: "WebSerial API in browser. Full native serial in Tauri. PlatformIO for 1000+ boards.",
-          },
-        ].map((f) => (
-          <div key={f.title} style={{
-            background: "var(--s1)",
-            padding: "28px 28px 32px",
-          }}>
-            <div style={{ fontSize: 26, marginBottom: 12 }}>{f.icon}</div>
-            <div style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 700, fontSize: 14,
-              letterSpacing: "0.02em",
-              color: "var(--t1)", marginBottom: 8,
-            }}>{f.title}</div>
-            <div style={{ fontSize: 13, color: "var(--t3)", lineHeight: 1.65 }}>{f.desc}</div>
-          </div>
-        ))}
+        <div style={{
+          fontFamily: "var(--font-mono)", fontSize: 10,
+          color: "var(--t4)", letterSpacing: "0.08em",
+          marginBottom: 16,
+        }}>
+          CAPABILITIES
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 1,
+          background: "var(--b1)",
+          border: "1px solid var(--b1)",
+          borderRadius: "var(--r2)",
+          overflow: "hidden",
+        }}>
+          {[
+            {
+              icon: Zap,
+              title: "Flash & Verify",
+              desc: "Agent compiles, uploads, reads serial output, and confirms the board is working — all in one command.",
+            },
+            {
+              icon: Cpu,
+              title: "1,549+ Boards",
+              desc: "Full PlatformIO board registry. ESP32, STM32, Nordic nRF52, RP2040, RISC-V, SAMD, Teensy, and more.",
+            },
+            {
+              icon: Layers,
+              title: "AI Agent",
+              desc: "Claude, GPT-4o, Gemini, Ollama. Reads files, edits code, fixes errors, runs builds autonomously.",
+            },
+            {
+              icon: GitBranch,
+              title: "Real-Time Sync",
+              desc: "Yjs CRDT — edit the same project from browser, desktop app, and phone simultaneously, offline-first.",
+            },
+            {
+              icon: Radio,
+              title: "Serial Monitor",
+              desc: "WebSerial API in browser. Full native serial in the Tauri desktop app. Baud rate, timestamp, filters.",
+            },
+            {
+              icon: MonitorSpeaker,
+              title: "Library Manager",
+              desc: "Search and install any PlatformIO library. Written to platformio.ini — auto-downloaded at build time.",
+            },
+          ].map(({ icon: Icon, title, desc }) => (
+            <div
+              key={title}
+              style={{
+                background: "var(--s1)",
+                padding: "24px 24px 28px",
+              }}
+            >
+              <div style={{
+                width: 28, height: 28,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "var(--amber-lo)",
+                border: "1px solid rgba(224,160,32,0.2)",
+                borderRadius: "var(--r2)",
+                marginBottom: 12,
+              }}>
+                <Icon size={14} style={{ color: "var(--amber)" }} />
+              </div>
+              <div style={{
+                fontFamily: "var(--font-ui)",
+                fontWeight: 600, fontSize: 13,
+                color: "var(--t1)", marginBottom: 6,
+              }}>
+                {title}
+              </div>
+              <div style={{
+                fontSize: 12, color: "var(--t3)", lineHeight: 1.65,
+              }}>
+                {desc}
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* Footer */}
+      {/* ── CTA strip ────────────────────────────────────────────────────── */}
+      <section style={{
+        borderTop: "1px solid var(--b1)",
+        background: "var(--s1)",
+        padding: "40px 48px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 24,
+      }}>
+        <div>
+          <div style={{
+            fontFamily: "var(--font-ui)", fontWeight: 600, fontSize: 16,
+            color: "var(--t1)", marginBottom: 4,
+          }}>
+            Ready to build?
+          </div>
+          <div style={{
+            fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--t3)",
+          }}>
+            Open a project or try the demo — no signup required.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link href="/dashboard" className="btn-amber" style={{ fontSize: 12, padding: "7px 16px" }}>
+            Open Workspace
+          </Link>
+          <Link href="/editor/demo" className="btn" style={{ fontSize: 12, padding: "7px 14px" }}>
+            Live Demo
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Footer ───────────────────────────────────────────────────────── */}
       <footer style={{
         borderTop: "1px solid var(--b1)",
-        padding: "24px 48px",
+        padding: "14px 48px",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        color: "var(--t4)",
-        fontSize: 12,
-        fontFamily: "var(--font-mono)",
+        flexShrink: 0,
       }}>
-        <span>EDGE LAB · AI-Powered Embedded IDE</span>
-        <div style={{ display: "flex", gap: 24 }}>
-          <span>🖥 Desktop (Tauri)</span>
-          <span>📱 Mobile (Expo)</span>
-          <span>🌐 Web (Next.js)</span>
+        <span style={{
+          fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)",
+        }}>
+          edgelab · AI-Powered Embedded IDE · 2025
+        </span>
+        <div style={{ display: "flex", gap: 16 }}>
+          {["Web", "Desktop (Tauri)", "Mobile (Expo)"].map((p) => (
+            <span key={p} style={{
+              fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)",
+            }}>
+              {p}
+            </span>
+          ))}
         </div>
       </footer>
     </main>

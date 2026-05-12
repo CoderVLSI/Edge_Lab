@@ -216,7 +216,7 @@ export function LibraryManager({
       {/* Standalone trigger button */}
       {controlledOpen === undefined && (
         <button onClick={() => setOpen(true)} title="Library Manager"
-          style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 5, border: "1px solid var(--b2)", background: "transparent", color: "var(--t2)", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 12, cursor: "pointer", letterSpacing: "0.03em" }}>
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: "var(--r2)", border: "1px solid var(--b2)", background: "transparent", color: "var(--t2)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, cursor: "pointer", letterSpacing: "0.03em" }}>
           <BookOpen size={11} /> Libs
         </button>
       )}
@@ -226,13 +226,13 @@ export function LibraryManager({
         <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.65)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
 
-          <div style={{ width: 640, maxWidth: "95vw", maxHeight: "82vh", background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}>
+          <div style={{ width: 640, maxWidth: "95vw", maxHeight: "82vh", background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: "var(--r3)", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}>
 
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid var(--b1)", gap: 10, flexShrink: 0 }}>
               <BookOpen size={16} color="var(--amber)" />
-              <span style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em", flex: 1 }}>
-                LIBRARY <span style={{ color: "var(--amber)" }}>MANAGER</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--t1)", letterSpacing: "0.04em", flex: 1 }}>
+                LIBRARY MANAGER
               </span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)" }}>via PlatformIO registry</span>
               {/* Toast */}
@@ -252,7 +252,7 @@ export function LibraryManager({
               <button style={tabStyle(tab === "installed")} onClick={() => setTab("installed")}>
                 lib_deps
                 {deps.length > 0 && (
-                  <span style={{ marginLeft: 6, background: "var(--amber)", color: "#07080f", borderRadius: 10, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{deps.length}</span>
+                  <span style={{ marginLeft: 6, background: "var(--amber)", color: "#0a0a0a", borderRadius: "var(--r1)", padding: "1px 5px", fontSize: 9, fontWeight: 700 }}>{deps.length}</span>
                 )}
                 {depsLoading && <Loader2 size={10} style={{ marginLeft: 5, animation: "spin 1s linear infinite" }} />}
               </button>
@@ -305,7 +305,7 @@ export function LibraryManager({
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
-                              <span style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{lib.name}</span>
+                              <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--t1)" }}>{lib.name}</span>
                               {lib.version && (
                                 <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)", background: "var(--s2)", padding: "1px 6px", borderRadius: 4 }}>v{lib.version}</span>
                               )}
@@ -391,8 +391,8 @@ export function LibraryManager({
               {tab === "custom" && (
                 <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
                   <div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>
-                      <GitBranch size={13} style={{ display: "inline", marginRight: 6, color: "var(--amber)" }} />
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--t1)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                      <GitBranch size={12} style={{ color: "var(--amber)" }} />
                       Add from Git / URL
                     </div>
                     <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--t3)", marginBottom: 12, lineHeight: 1.6 }}>
@@ -404,21 +404,21 @@ export function LibraryManager({
                         onChange={(e) => setCustomUrl(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") addCustom(); }}
                         placeholder="https://github.com/vendor/library.git#v1.2.0"
-                        style={{ flex: 1, height: 36, border: "1px solid var(--b2)", borderRadius: 7, background: "var(--s1)", color: "var(--t1)", padding: "0 12px", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none" }}
+                        style={{ flex: 1, height: 32, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s1)", color: "var(--t1)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none" }}
                         onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
                         onBlur={(e) => { e.currentTarget.style.borderColor = "var(--b2)"; }}
                       />
                       <button
                         onClick={addCustom}
                         disabled={!customUrl.trim() || actionId === "custom"}
-                        style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 16px", height: 36, borderRadius: 7, border: "none", background: customUrl.trim() ? "var(--amber)" : "var(--s2)", color: customUrl.trim() ? "#07080f" : "var(--t4)", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, cursor: customUrl.trim() ? "pointer" : "not-allowed" }}
+                        style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 14px", height: 32, borderRadius: "var(--r2)", border: "none", background: customUrl.trim() ? "var(--amber)" : "var(--s2)", color: customUrl.trim() ? "#0a0a0a" : "var(--t4)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, cursor: customUrl.trim() ? "pointer" : "not-allowed" }}
                       >
                         {actionId === "custom" ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={12} />}
                         Add
                       </button>
                     </div>
                   </div>
-                  <div style={{ border: "1px solid var(--b2)", borderRadius: 8, padding: 12, background: "var(--s1)" }}>
+                  <div style={{ border: "1px solid var(--b2)", borderRadius: "var(--r2)", padding: 12, background: "var(--s1)" }}>
                     <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)", letterSpacing: "0.08em", marginBottom: 8 }}>// EXAMPLES</div>
                     {[
                       { label: "GitHub (latest)",  ex: "https://github.com/me-no-dev/AsyncTCP.git" },

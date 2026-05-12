@@ -156,12 +156,12 @@ export function BoardSelector({ value, onChange }: BoardSelectorProps) {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width: 680, maxWidth: "calc(100vw - 32px)", background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: 12, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 100px)" }}
+            style={{ width: 680, maxWidth: "calc(100vw - 32px)", background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: "var(--r3)", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 100px)" }}
           >
             {/* Header */}
             <div style={{ padding: "14px 18px 10px", borderBottom: "1px solid var(--b1)", flexShrink: 0 }}>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em", marginBottom: 10 }}>
-                BOARD <span style={{ color: "var(--amber)" }}>SELECTOR</span>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--t1)", letterSpacing: "0.04em", marginBottom: 10 }}>
+                BOARD SELECTOR
                 {boards.length > 0 && (
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 400, color: "var(--t4)", marginLeft: 10 }}>
                     {boards.length.toLocaleString()} supported targets
@@ -169,8 +169,8 @@ export function BoardSelector({ value, onChange }: BoardSelectorProps) {
                 )}
               </div>
               {/* Search */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--b2)", borderRadius: 8, background: "var(--s1)" }}>
-                <span style={{ fontSize: 13 }}>🔍</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s1)" }}>
+                <span style={{ fontSize: 11, color: "var(--t4)" }}>⌕</span>
                 <input
                   ref={inputRef}
                   value={query}
@@ -198,7 +198,7 @@ export function BoardSelector({ value, onChange }: BoardSelectorProps) {
                     style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 12px", height: 36, border: "none", borderBottom: active ? "2px solid var(--amber)" : "2px solid transparent", background: active ? "var(--amber-lo)" : "transparent", color: active ? "var(--amber)" : "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", transition: "color 0.15s, background 0.15s", flexShrink: 0 }}
                   >
                     {cat}
-                    <span style={{ fontSize: 9, opacity: 0.7, background: active ? "rgba(245,158,11,0.15)" : "var(--s2)", borderRadius: 8, padding: "1px 5px" }}>
+                    <span style={{ fontSize: 9, opacity: 0.7, background: active ? "var(--amber-lo)" : "var(--s2)", borderRadius: "var(--r1)", padding: "1px 5px" }}>
                       {count}
                     </span>
                   </button>
@@ -227,14 +227,16 @@ export function BoardSelector({ value, onChange }: BoardSelectorProps) {
                     style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", border: "none", background: hover ? "var(--amber-lo)" : "transparent", cursor: "pointer", textAlign: "left", borderLeft: hover ? "2px solid var(--amber)" : active ? "2px solid rgba(245,158,11,0.4)" : "2px solid transparent", transition: "background 0.1s" }}
                   >
                     {/* Board icon placeholder */}
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--s2)", border: "1px solid var(--b2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16 }}>
-                      {getCategory(b.platform) === "ESP" ? "📡" :
-                       getCategory(b.platform) === "Arduino" ? "🟦" :
-                       getCategory(b.platform) === "STM32" ? "⬛" :
-                       getCategory(b.platform) === "Nordic" ? "🔵" :
-                       getCategory(b.platform) === "RP2040" ? "🟢" :
-                       getCategory(b.platform) === "Teensy" ? "🟡" :
-                       getCategory(b.platform) === "RISC-V" ? "🔺" : "🔧"}
+                    <div style={{ width: 32, height: 32, borderRadius: "var(--r2)", background: "var(--s2)", border: "1px solid var(--b2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t3)", letterSpacing: 0 }}>
+                        {getCategory(b.platform) === "ESP"    ? "ESP" :
+                         getCategory(b.platform) === "Arduino" ? "AVR" :
+                         getCategory(b.platform) === "STM32"   ? "STM" :
+                         getCategory(b.platform) === "Nordic"  ? "NRF" :
+                         getCategory(b.platform) === "RP2040"  ? "RP2" :
+                         getCategory(b.platform) === "Teensy"  ? "ARM" :
+                         getCategory(b.platform) === "RISC-V"  ? "RV"  : "MCU"}
+                      </span>
                     </div>
 
                     {/* Info */}
@@ -244,7 +246,7 @@ export function BoardSelector({ value, onChange }: BoardSelectorProps) {
                           {b.name}
                         </span>
                         {active && (
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, background: "rgba(245,158,11,0.2)", color: "var(--amber)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "1px 6px", flexShrink: 0 }}>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, background: "var(--amber-lo)", color: "var(--amber)", border: "1px solid rgba(224,160,32,0.3)", borderRadius: "var(--r1)", padding: "1px 5px", flexShrink: 0 }}>
                             CURRENT
                           </span>
                         )}

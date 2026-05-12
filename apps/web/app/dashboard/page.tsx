@@ -2,46 +2,85 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import {
+  FolderOpen,
+  Plus,
+  Trash2,
+  ChevronRight,
+  Cpu,
+  Clock,
+  FileCode,
+  Zap,
+  Circle,
+} from "lucide-react";
 
 interface Project {
   id: string;
   name: string;
   boardType: string;
+  mcu?: string;
   updatedAt: string;
   files?: number;
+  language?: string;
 }
 
 const DEMO_PROJECTS: Project[] = [
-  { id: "demo-1", name: "LED Blink ESP32", boardType: "ESP32 Dev Module", updatedAt: "2 hours ago", files: 3 },
-  { id: "demo-2", name: "DHT22 Sensor", boardType: "Arduino Uno", updatedAt: "Yesterday", files: 5 },
-  { id: "demo-3", name: "MQTT Client", boardType: "ESP8266 NodeMCU", updatedAt: "3 days ago", files: 7 },
+  { id: "demo-1", name: "led-blink-esp32",  boardType: "ESP32 Dev Module", mcu: "Xtensa LX6", updatedAt: "2h ago",  files: 3, language: "C++" },
+  { id: "demo-2", name: "dht22-sensor",     boardType: "Arduino Uno",      mcu: "ATmega328P",  updatedAt: "1d ago",  files: 5, language: "C++" },
+  { id: "demo-3", name: "mqtt-client",      boardType: "ESP8266 NodeMCU",  mcu: "ESP8266EX",   updatedAt: "3d ago",  files: 7, language: "C++" },
+  { id: "demo-4", name: "pico-temp-logger", boardType: "Raspberry Pi Pico",mcu: "RP2040",      updatedAt: "1w ago",  files: 4, language: "C++" },
 ];
 
-const BOARD_ICONS: Record<string, string> = {
-  "ESP32": "⚡",
-  "Arduino": "🔵",
-  "ESP8266": "📡",
-};
-function boardIcon(boardType: string) {
-  for (const [k, v] of Object.entries(BOARD_ICONS)) {
-    if (boardType.includes(k)) return v;
-  }
-  return "🔌";
+const BOARD_OPTIONS = [
+  "ESP32 Dev Module",
+  "ESP32-S3",
+  "ESP32-C3",
+  "ESP8266 NodeMCU",
+  "Arduino Uno",
+  "Arduino Nano",
+  "Arduino Mega 2560",
+  "Raspberry Pi Pico",
+  "STM32 Blue Pill",
+  "Nordic nRF52840",
+];
+
+function boardPlatform(boardType: string): string {
+  if (boardType.startsWith("ESP32")) return "espressif32";
+  if (boardType.startsWith("ESP8266")) return "espressif8266";
+  if (boardType.startsWith("Arduino")) return "atmelavr";
+  if (boardType.startsWith("Raspberry")) return "raspberrypi";
+  if (boardType.startsWith("STM32")) return "ststm32";
+  if (boardType.startsWith("Nordic")) return "nordicnrf52";
+  return "atmelavr";
 }
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>(DEMO_PROJECTS);
   const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName]         = useState("");
   const [boardType, setBoardType] = useState("ESP32 Dev Module");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const create = () => {
     if (!name.trim()) return;
     const id = `project-${Date.now()}`;
-    setProjects((p) => [{ id, name, boardType, updatedAt: "Just now", files: 1 }, ...p]);
+    setProjects((p) => [
+      { id, name: name.trim(), boardType, updatedAt: "just now", files: 1, language: "C++" },
+      ...p,
+    ]);
     setName("");
     setCreating(false);
+  };
+
+  const confirmDelete = (id: string) => {
+    if (deleteConfirm === id) {
+      setProjects((ps) => ps.filter((x) => x.id !== id));
+      setDeleteConfirm(null);
+    } else {
+      setDeleteConfirm(id);
+      setTimeout(() => setDeleteConfirm(null), 3000);
+    }
   };
 
   return (
@@ -50,321 +89,428 @@ export default function Dashboard() {
       background: "var(--bg)",
       color: "var(--t1)",
       fontFamily: "var(--font-ui)",
+      display: "flex",
+      flexDirection: "column",
     }}>
 
-      {/* Circuit grid background */}
+      {/* ── Titlebar ─────────────────────────────────────────────────────── */}
       <div style={{
-        position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0,
-        backgroundImage: "linear-gradient(var(--b1) 1px, transparent 1px), linear-gradient(90deg, var(--b1) 1px, transparent 1px)",
-        backgroundSize: "48px 48px",
-      }} />
-
-      {/* Amber glow — top right */}
-      <div style={{
-        position: "fixed", top: -100, right: -100, pointerEvents: "none", zIndex: 0,
-        width: 500, height: 400,
-        background: "radial-gradient(ellipse, rgba(245,158,11,0.07) 0%, transparent 70%)",
-      }} />
-
-      {/* Nav */}
-      <nav style={{
-        position: "relative", zIndex: 10,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "16px 48px",
+        height: 38,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 16px",
         borderBottom: "1px solid var(--b1)",
-        background: "rgba(7,8,15,0.85)",
-        backdropFilter: "blur(12px)",
+        background: "var(--s1)",
+        flexShrink: 0,
       }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="Edge Lab" width={26} height={26} style={{ borderRadius: 5 }} />
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 14, letterSpacing: "0.06em", color: "var(--t1)" }}>
-            EDGE <span style={{ color: "var(--amber)" }}>LAB</span>
-          </span>
+        {/* Left: logo */}
+        <Link href="/" style={{
+          display: "flex", alignItems: "center", gap: 8,
+          textDecoration: "none",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "var(--amber)",
+          letterSpacing: "0.04em",
+        }}>
+          <Zap size={13} />
+          edgelab
         </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6,
-            background: "var(--amber-lo)", border: "1px solid rgba(245,158,11,0.2)",
-            borderRadius: 99, padding: "4px 12px",
+
+        {/* Center: breadcrumb */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 4,
+          fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--t3)",
+        }}>
+          <span>workspace</span>
+          <ChevronRight size={11} />
+          <span style={{ color: "var(--t2)" }}>projects</span>
+        </div>
+
+        {/* Right: actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontFamily: "var(--font-mono)", fontSize: 10,
+            color: "var(--t3)",
           }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--amber)", display: "inline-block", animation: "pulse-amber 2s infinite" }} />
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--amber)", letterSpacing: "0.08em" }}>
-              {projects.length} PROJECT{projects.length !== 1 ? "S" : ""}
-            </span>
-          </div>
+            {projects.length} project{projects.length !== 1 ? "s" : ""}
+          </span>
+          <div className="vdiv" />
           <button
             onClick={() => setCreating(true)}
             className="btn-amber"
-            style={{ padding: "6px 16px", fontSize: 12 }}
+            style={{ height: 24, padding: "0 10px", fontSize: 11, gap: 4 }}
           >
-            + New Project
+            <Plus size={11} />
+            New
           </button>
         </div>
-      </nav>
+      </div>
 
-      {/* Main content */}
-      <main style={{
-        position: "relative", zIndex: 1,
-        maxWidth: 860,
-        margin: "0 auto",
-        padding: "48px 48px 80px",
-      }}>
+      {/* ── Main ─────────────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        {/* Header */}
-        <div className="animate-fade-up" style={{ marginBottom: 36 }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--amber)", letterSpacing: "0.1em", marginBottom: 10 }}>
-            // WORKSPACE
-          </div>
-          <h1 style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 800, fontSize: 36,
-            letterSpacing: "-0.02em",
-            margin: 0, lineHeight: 1.1,
+        {/* Sidebar */}
+        <div style={{
+          width: 200,
+          borderRight: "1px solid var(--b1)",
+          background: "var(--s1)",
+          padding: "16px 0",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            padding: "0 12px 6px",
+            fontFamily: "var(--font-mono)", fontSize: 10,
+            color: "var(--t4)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
           }}>
-            Your Projects
-          </h1>
-          <p style={{ color: "var(--t3)", fontSize: 13, marginTop: 8, fontFamily: "var(--font-ui)" }}>
-            Open a project to start coding — the agent is ready.
-          </p>
+            EXPLORER
+          </div>
+
+          {[
+            { label: "Projects",  icon: FolderOpen, active: true  },
+            { label: "Templates", icon: FileCode,   active: false },
+            { label: "Boards",    icon: Cpu,        active: false },
+          ].map(({ label, icon: Icon, active }) => (
+            <button
+              key={label}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                width: "100%", padding: "5px 12px",
+                background: active ? "var(--s2)" : "transparent",
+                border: "none",
+                borderLeft: active ? "1px solid var(--amber)" : "1px solid transparent",
+                color: active ? "var(--t1)" : "var(--t3)",
+                fontFamily: "var(--font-ui)", fontSize: 12,
+                cursor: "pointer", textAlign: "left",
+              }}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          ))}
         </div>
 
-        {/* New project form */}
-        {creating && (
-          <div className="animate-fade-up" style={{
-            marginBottom: 20,
-            background: "var(--s1)",
-            border: "1px solid rgba(245,158,11,0.35)",
-            borderRadius: 10,
-            padding: "20px 24px",
-            boxShadow: "0 0 30px rgba(245,158,11,0.06)",
+        {/* Content */}
+        <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
+
+          {/* Header row */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginBottom: 16,
           }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--amber)", letterSpacing: "0.1em", marginBottom: 14 }}>
-              // NEW PROJECT
+            <div style={{
+              fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--t3)",
+            }}>
+              PROJECTS · {projects.length} items
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && create()}
-                placeholder="Project name…"
+            {!creating && (
+              <button
+                onClick={() => setCreating(true)}
                 style={{
-                  background: "var(--bg)",
-                  border: "1px solid var(--b2)",
-                  borderRadius: 6,
-                  padding: "10px 14px",
-                  color: "var(--t1)",
-                  fontFamily: "var(--font-ui)",
-                  fontSize: 14,
-                  outline: "none",
-                  width: "100%",
-                  boxSizing: "border-box",
+                  display: "flex", alignItems: "center", gap: 4,
+                  background: "transparent", border: "none",
+                  color: "var(--t3)", fontFamily: "var(--font-ui)", fontSize: 11,
+                  cursor: "pointer", padding: "2px 6px",
+                  borderRadius: "var(--r1)",
                 }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(245,158,11,0.5)"; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = "var(--b2)"; }}
-              />
-              <select
-                value={boardType}
-                onChange={(e) => setBoardType(e.target.value)}
-                style={{
-                  background: "var(--bg)",
-                  border: "1px solid var(--b2)",
-                  borderRadius: 6,
-                  padding: "10px 14px",
-                  color: "var(--t2)",
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  outline: "none",
-                  cursor: "pointer",
-                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--amber)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--t3)"; }}
               >
-                <option>ESP32 Dev Module</option>
-                <option>ESP32-S3</option>
-                <option>ESP8266 NodeMCU</option>
-                <option>Arduino Uno</option>
-                <option>Arduino Nano</option>
-                <option>Arduino Mega 2560</option>
-                <option>Raspberry Pi Pico</option>
-                <option>STM32 Blue Pill</option>
-              </select>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={create}
-                  className="btn-amber"
-                  style={{ padding: "8px 20px", fontSize: 12 }}
+                <Plus size={11} /> New project
+              </button>
+            )}
+          </div>
+
+          {/* New project form */}
+          {creating && (
+            <div className="animate-slide" style={{
+              marginBottom: 4,
+              background: "var(--s2)",
+              border: "1px solid var(--amber)",
+              borderRadius: "var(--r2)",
+              padding: "14px 16px",
+            }}>
+              <div style={{
+                fontFamily: "var(--font-mono)", fontSize: 10,
+                color: "var(--amber)", letterSpacing: "0.08em", marginBottom: 10,
+              }}>
+                NEW PROJECT
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  autoFocus
+                  className="input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") create();
+                    if (e.key === "Escape") { setCreating(false); setName(""); }
+                  }}
+                  placeholder="project-name"
+                  style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12 }}
+                />
+                <select
+                  value={boardType}
+                  onChange={(e) => setBoardType(e.target.value)}
+                  className="input"
+                  style={{ width: 200, fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer" }}
                 >
-                  Create Project
+                  {BOARD_OPTIONS.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={create} className="btn-amber" style={{ height: 26, padding: "0 12px", fontSize: 11 }}>
+                  Create
                 </button>
-                <button
-                  onClick={() => { setCreating(false); setName(""); }}
-                  className="btn-ghost"
-                  style={{ padding: "8px 16px", fontSize: 12 }}
-                >
+                <button onClick={() => { setCreating(false); setName(""); }} className="btn-ghost" style={{ height: 26, padding: "0 10px", fontSize: 11 }}>
                   Cancel
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Project list */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {projects.map((p, i) => (
-            <div
-              key={p.id}
-              className={i === 0 ? "animate-fade-up" : `animate-fade-up-d${Math.min(i, 5) as 1|2|3|4|5}`}
-              onMouseEnter={() => setHoveredId(p.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 16,
-                background: hoveredId === p.id ? "var(--s2)" : "var(--s1)",
-                border: `1px solid ${hoveredId === p.id ? "var(--b2)" : "var(--b1)"}`,
-                borderRadius: 8,
-                padding: "18px 24px",
-                transition: "background 0.15s, border-color 0.15s",
-                cursor: "pointer",
-                marginBottom: 1,
-              }}
-            >
-              {/* Board icon */}
-              <div style={{
-                width: 42, height: 42,
-                background: "var(--bg)",
-                border: "1px solid var(--b2)",
-                borderRadius: 8,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 20,
-                flexShrink: 0,
-              }}>
-                {boardIcon(p.boardType)}
-              </div>
+          {/* Column headers */}
+          {projects.length > 0 && (
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 160px 80px 70px 80px",
+              gap: "0 12px",
+              padding: "4px 10px",
+              fontFamily: "var(--font-mono)", fontSize: 10,
+              color: "var(--t4)",
+              letterSpacing: "0.06em",
+              borderBottom: "1px solid var(--b1)",
+              marginBottom: 2,
+            }}>
+              <span>NAME</span>
+              <span>BOARD</span>
+              <span>PLATFORM</span>
+              <span>FILES</span>
+              <span>MODIFIED</span>
+            </div>
+          )}
 
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <Link
-                  href={`/editor/${p.id}`}
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 700,
-                    fontSize: 15,
-                    color: hoveredId === p.id ? "var(--amber)" : "var(--t1)",
-                    textDecoration: "none",
-                    display: "block",
-                    transition: "color 0.15s",
-                    letterSpacing: "0.01em",
-                  }}
-                >
-                  {p.name}
-                </Link>
+          {/* Project rows */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {projects.map((p) => (
+              <div
+                key={p.id}
+                onMouseEnter={() => setHoveredId(p.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 160px 80px 70px 80px",
+                  gap: "0 12px",
+                  alignItems: "center",
+                  padding: "5px 10px",
+                  background: hoveredId === p.id ? "var(--s2)" : "transparent",
+                  borderRadius: "var(--r1)",
+                  transition: "background 0.1s",
+                  cursor: "pointer",
+                  minHeight: 30,
+                }}
+              >
+                {/* Name */}
+                <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                  <FileCode size={13} style={{ color: "var(--amber)", flexShrink: 0 }} />
+                  <Link
+                    href={`/editor/${p.id}`}
+                    style={{
+                      fontFamily: "var(--font-mono)", fontSize: 12,
+                      color: hoveredId === p.id ? "var(--t1)" : "var(--t2)",
+                      textDecoration: "none",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      transition: "color 0.1s",
+                    }}
+                  >
+                    {p.name}
+                  </Link>
+                  {hoveredId === p.id && (
+                    <span style={{
+                      fontFamily: "var(--font-mono)", fontSize: 10,
+                      color: "var(--t4)",
+                      background: "var(--s3)",
+                      border: "1px solid var(--b2)",
+                      borderRadius: "var(--r1)",
+                      padding: "1px 5px",
+                      marginLeft: 4,
+                    }}>
+                      {p.language ?? "C++"}
+                    </span>
+                  )}
+                </div>
+
+                {/* Board */}
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  marginTop: 4,
+                  fontFamily: "var(--font-mono)", fontSize: 10,
+                  color: "var(--amber)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
-                  <span style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 10,
-                    color: "var(--amber)",
-                    background: "var(--amber-lo)",
-                    border: "1px solid rgba(245,158,11,0.2)",
-                    borderRadius: 4,
-                    padding: "2px 7px",
-                    letterSpacing: "0.05em",
-                  }}>
-                    {p.boardType}
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)" }}>
-                    {p.files} file{p.files !== 1 ? "s" : ""}
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)" }}>
+                  {p.boardType}
+                </div>
+
+                {/* Platform */}
+                <div style={{
+                  fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)",
+                }}>
+                  {boardPlatform(p.boardType)}
+                </div>
+
+                {/* Files */}
+                <div style={{
+                  fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)",
+                }}>
+                  {p.files ?? 1}
+                </div>
+
+                {/* Modified + actions */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Clock size={10} style={{ color: "var(--t4)", flexShrink: 0 }} />
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)", flex: 1 }}>
                     {p.updatedAt}
                   </span>
+                  {hoveredId === p.id && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); confirmDelete(p.id); }}
+                      title={deleteConfirm === p.id ? "Click again to confirm" : "Delete project"}
+                      style={{
+                        background: "transparent", border: "none",
+                        color: deleteConfirm === p.id ? "var(--red)" : "var(--t4)",
+                        cursor: "pointer", padding: 2,
+                        display: "flex", alignItems: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* Actions */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setProjects((ps) => ps.filter((x) => x.id !== p.id)); }}
-                  title="Delete project"
-                  style={{
-                    width: 30, height: 30,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "transparent",
-                    border: "none",
-                    borderRadius: 6,
-                    color: "var(--t4)",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    opacity: hoveredId === p.id ? 1 : 0,
-                    transition: "opacity 0.15s, color 0.15s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--red)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--t4)"; }}
-                >
-                  ✕
-                </button>
-                <Link
-                  href={`/editor/${p.id}`}
-                  className="btn-amber"
-                  style={{ padding: "6px 16px", fontSize: 11 }}
-                >
-                  Open →
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Empty state */}
-        {projects.length === 0 && (
-          <div style={{
-            textAlign: "center",
-            padding: "80px 0",
-            color: "var(--t4)",
-          }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🔌</div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--t3)", marginBottom: 8 }}>
-              No projects yet
-            </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--t4)", marginBottom: 24 }}>
-              Create a project to start building
-            </div>
-            <button
-              onClick={() => setCreating(true)}
-              className="btn-amber"
-              style={{ padding: "10px 24px" }}
-            >
-              + New Project
-            </button>
+            ))}
           </div>
-        )}
 
-        {/* Quick stats footer */}
-        <div style={{
-          marginTop: 48,
-          paddingTop: 24,
-          borderTop: "1px solid var(--b1)",
-          display: "flex", gap: 32,
-        }}>
-          {[
-            { label: "Boards Supported", value: "1000+" },
-            { label: "AI Providers", value: "5" },
-            { label: "Sync Protocol", value: "Yjs CRDT" },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, color: "var(--amber)" }}>
-                {stat.value}
+          {/* Empty state */}
+          {projects.length === 0 && (
+            <div style={{
+              padding: "60px 0",
+              textAlign: "center",
+            }}>
+              <FolderOpen size={32} style={{ color: "var(--b3)", marginBottom: 12 }} />
+              <div style={{
+                fontFamily: "var(--font-mono)", fontSize: 12,
+                color: "var(--t4)", marginBottom: 16,
+              }}>
+                no projects — create one to get started
               </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)", letterSpacing: "0.06em", marginTop: 2 }}>
-                {stat.label.toUpperCase()}
+              <button
+                onClick={() => setCreating(true)}
+                className="btn-amber"
+                style={{ height: 28, padding: "0 14px", fontSize: 11 }}
+              >
+                <Plus size={11} /> New Project
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right panel — stats */}
+        <div style={{
+          width: 220,
+          borderLeft: "1px solid var(--b1)",
+          background: "var(--s1)",
+          padding: "16px 0",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            padding: "0 12px 10px",
+            fontFamily: "var(--font-mono)", fontSize: 10,
+            color: "var(--t4)", letterSpacing: "0.08em",
+          }}>
+            WORKSPACE
+          </div>
+
+          {[
+            { label: "Projects",       value: String(projects.length) },
+            { label: "Boards",         value: "1,549+" },
+            { label: "Sync protocol",  value: "Yjs CRDT" },
+            { label: "AI providers",   value: "5" },
+          ].map(({ label, value }) => (
+            <div key={label} style={{
+              padding: "6px 12px",
+              borderBottom: "1px solid var(--b1)",
+            }}>
+              <div style={{
+                fontFamily: "var(--font-mono)", fontSize: 10,
+                color: "var(--t4)", marginBottom: 2,
+              }}>
+                {label}
+              </div>
+              <div style={{
+                fontFamily: "var(--font-mono)", fontSize: 12,
+                color: "var(--t1)",
+              }}>
+                {value}
               </div>
             </div>
           ))}
+
+          {/* Status */}
+          <div style={{ padding: "12px 12px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)", marginBottom: 4 }}>
+              SERVICES
+            </div>
+            {[
+              { name: "API",         ok: true  },
+              { name: "Sync server", ok: true  },
+              { name: "LSP gateway", ok: false },
+            ].map(({ name, ok }) => (
+              <div key={name} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)",
+              }}>
+                <Circle
+                  size={6}
+                  fill={ok ? "var(--green)" : "var(--t4)"}
+                  style={{ color: ok ? "var(--green)" : "var(--t4)", flexShrink: 0 }}
+                />
+                {name}
+              </div>
+            ))}
+          </div>
         </div>
-      </main>
+      </div>
+
+      {/* ── Status bar ───────────────────────────────────────────────────── */}
+      <div style={{
+        height: 22,
+        background: "var(--s1)",
+        borderTop: "1px solid var(--b1)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 8px",
+        flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+          <span className="statusbar-item" style={{ color: "var(--amber)", fontWeight: 600 }}>
+            <Zap size={10} /> edgelab
+          </span>
+          <span className="statusbar-item">dashboard</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <span className="statusbar-item">PlatformIO</span>
+          <span className="statusbar-item">UTF-8</span>
+          <span className="statusbar-item">
+            <Circle size={6} fill="var(--green)" style={{ color: "var(--green)" }} />
+            synced
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

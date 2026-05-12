@@ -37,12 +37,10 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "sidecar": false
+      "open": true
     },
     "fs": {
-      "all": true,
-      "scope": ["$HOME/**", "$DOCUMENT/**", "$DESKTOP/**"]
+      "requireLiteralLeadingDot": false
     }
   }
 }

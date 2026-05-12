@@ -159,7 +159,7 @@ function MessageBubble({ msg }: { msg: DisplayMessage }) {
           )}
           {/* Text bubble — hide placeholder "(image)" when images are present */}
           {msg.text && (msg.text !== "(image)" || !msg.images?.length) && (
-            <div style={{ background: "var(--amber)", color: "#07080f", borderRadius: 8, padding: "8px 12px", fontFamily: "var(--font-ui)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", fontWeight: 500 }}>
+            <div style={{ background: "var(--amber)", color: "#0a0a0a", borderRadius: "var(--r2)", padding: "7px 11px", fontFamily: "var(--font-ui)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", fontWeight: 500 }}>
               {msg.text}
             </div>
           )}
@@ -178,7 +178,7 @@ function MessageBubble({ msg }: { msg: DisplayMessage }) {
           <ToolBlock key={call.id} call={call} />
         ))}
         {(msg.text || msg.streaming) && (
-          <div style={{ background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: 8, padding: "10px 12px", fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--t2)", lineHeight: 1.65, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          <div style={{ background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: "var(--r2)", padding: "9px 12px", fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--t2)", lineHeight: 1.65, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {msg.text || (msg.streaming ? "▋" : "")}
           </div>
         )}
@@ -492,8 +492,8 @@ export function AgentChat({
             <Bot size={15} color="var(--amber)" />
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em", lineHeight: 1.2 }}>
-              AI <span style={{ color: "var(--amber)" }}>AGENT</span>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--t1)", letterSpacing: "0.04em", lineHeight: 1.2 }}>
+              AI AGENT
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t4)", marginTop: 2 }}>
               reads · writes · runs · flashes
@@ -551,8 +551,8 @@ export function AgentChat({
       {/* Messages */}
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {messages.length === 0 ? (
-          <div style={{ border: "1px solid var(--b2)", background: "var(--bg)", borderRadius: 8, padding: "14px 14px" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 6 }}>
+          <div style={{ border: "1px solid var(--b2)", background: "var(--bg)", borderRadius: "var(--r2)", padding: "12px 14px" }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: "var(--t2)", marginBottom: 4 }}>
               Ready when you are
             </div>
             <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, lineHeight: 1.6, color: "var(--t3)" }}>
@@ -616,7 +616,7 @@ export function AgentChat({
 
         {/* @file mention dropdown */}
         {mentionQuery !== null && mentionFiles.length > 0 && (
-          <div style={{ marginBottom: 6, border: "1px solid var(--b2)", borderRadius: 8, background: "var(--bg)", overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+          <div style={{ marginBottom: 6, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--bg)", overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
             <div style={{ padding: "4px 10px", borderBottom: "1px solid var(--b1)", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", letterSpacing: "0.1em" }}>
               @FILE — {mentionFiles.length} match{mentionFiles.length !== 1 ? "es" : ""}
             </div>
@@ -647,7 +647,7 @@ export function AgentChat({
           <button
             onClick={() => fileInputRef.current?.click()}
             title="Attach image (or paste)"
-            style={{ width: 38, height: 38, border: "1px solid var(--b2)", borderRadius: 8, background: "transparent", color: "var(--t3)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: 16 }}
+            style={{ width: 34, height: 34, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--t3)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, fontSize: 14 }}
           >
             🖼
           </button>
@@ -659,7 +659,7 @@ export function AgentChat({
             placeholder={files.length > 0 ? "Ask to edit, build, flash… type @ to mention a file" : "Ask to edit, build, flash… or paste a photo of your circuit"}
             disabled={running}
             rows={3}
-            style={{ minHeight: 76, flex: 1, minWidth: 0, resize: "none", border: "1px solid var(--b2)", borderRadius: 8, background: "var(--s1)", color: "var(--t1)", padding: "10px 12px", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.5, outline: "none", transition: "border-color 0.15s" }}
+            style={{ minHeight: 72, flex: 1, minWidth: 0, resize: "none", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s1)", color: "var(--t1)", padding: "9px 11px", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.5, outline: "none", transition: "border-color 0.15s" }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(245,158,11,0.45)"; }}
             onBlur={(e) => { e.currentTarget.style.borderColor = "var(--b2)"; }}
           />
@@ -667,7 +667,7 @@ export function AgentChat({
             onClick={send}
             disabled={running || (!input.trim() && !pendingImages.length)}
             title="Send (Enter)"
-            style={{ width: 38, height: 38, border: "none", borderRadius: 8, background: running || (!input.trim() && !pendingImages.length) ? "var(--s2)" : "var(--amber)", color: running || (!input.trim() && !pendingImages.length) ? "var(--t4)" : "#07080f", display: "flex", alignItems: "center", justifyContent: "center", cursor: running || (!input.trim() && !pendingImages.length) ? "not-allowed" : "pointer", flexShrink: 0, transition: "background 0.15s" }}
+            style={{ width: 34, height: 34, border: "none", borderRadius: "var(--r2)", background: running || (!input.trim() && !pendingImages.length) ? "var(--s2)" : "var(--amber)", color: running || (!input.trim() && !pendingImages.length) ? "var(--t4)" : "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", cursor: running || (!input.trim() && !pendingImages.length) ? "not-allowed" : "pointer", flexShrink: 0, transition: "background 0.15s" }}
           >
             {running ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>

@@ -1,2 +1,66 @@
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, #root { height: 100%; background: #07080f; color: #f1f5f9; font-family: system-ui, sans-serif; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg:  #0a0a0a;
+  --s1:  #111111;
+  --s2:  #161616;
+  --s3:  #1c1c1c;
+  --s4:  #222222;
+
+  --b1:  #1e1e1e;
+  --b2:  #2a2a2a;
+  --b3:  #383838;
+
+  --amber:     #e0a020;
+  --amber-dim: #c48a10;
+  --amber-lo:  rgba(224, 160, 32, 0.07);
+  --amber-md:  rgba(224, 160, 32, 0.14);
+
+  --green:   #4ec9b0;
+  --green-lo:rgba(78, 201, 176, 0.08);
+  --blue:    #4fc1ff;
+  --red:     #f44747;
+  --red-lo:  rgba(244,71,71,0.08);
+  --purple:  #c586c0;
+  --cyan:    #9cdcfe;
+  --orange:  #ce9178;
+
+  --t1:  #d4d4d4;
+  --t2:  #9d9d9d;
+  --t3:  #6a6a6a;
+  --t4:  #3d3d3d;
+
+  --font-ui:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+
+  --r1: 2px;
+  --r2: 4px;
+  --r3: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--t1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--b3); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--t4); }
+
+.cm-editor   { height: 100% !important; }
+.cm-scroller { overflow: auto !important; }
+.cm-scroller::-webkit-scrollbar       { width: 6px; height: 6px; }
+.cm-scroller::-webkit-scrollbar-track { background: transparent; }
+.cm-scroller::-webkit-scrollbar-thumb { background: var(--b3); }
+
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

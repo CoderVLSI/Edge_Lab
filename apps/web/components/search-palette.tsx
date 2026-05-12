@@ -181,7 +181,7 @@ export function SearchPalette({
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ width: 600, maxWidth: "calc(100vw - 40px)", background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: 12, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.7)" }}
+        style={{ width: 600, maxWidth: "calc(100vw - 40px)", background: "var(--bg)", border: "1px solid var(--b2)", borderRadius: "var(--r3)", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.7)" }}
       >
         {/* Search input */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--b1)" }}>

@@ -11,6 +11,7 @@ import { agentRouter } from "./routes/agent";
 import { createSerialRouter } from "./routes/serial";
 import { searchRouter } from "./routes/search";
 import { boardsRouter } from "./routes/boards";
+import { librariesRouter } from "./routes/libraries";
 import { authMiddleware } from "./middleware/auth";
 
 const app = new Hono();
@@ -58,6 +59,8 @@ app.route("/api/serial", createSerialRouter(upgradeWebSocket));
 app.route("/api/projects", searchRouter);
 // Board registry — public, no auth needed
 app.route("/api/boards", boardsRouter);
+// Library management + PIO registry proxy
+app.route("/api", librariesRouter);
 
 const port = Number(process.env.PORT ?? 4000);
 

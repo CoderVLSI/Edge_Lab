@@ -193,11 +193,15 @@ export function AgentChat({
   boardType,
   fileContext,
   mode = "firmware",
+  files = [],
+  externalInput,
 }: {
   projectId: string;
   boardType?: string;
   fileContext?: string;
   mode?: "firmware" | "schematics" | "board";
+  files?: string[];
+  externalInput?: string;
 }) {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [selectedProvider, setSelectedProvider] = useState(() =>
@@ -210,6 +214,10 @@ export function AgentChat({
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ImagePart[]>([]);
   const [running, setRunning] = useState(false);
+  // @mention state
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(0);
+  const [mentionIdx, setMentionIdx] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -246,6 +254,16 @@ export function AgentChat({
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, []);
+
+  // When a parent injects text (e.g. "Ask agent to fix"), populate input
+  useEffect(() => {
+    if (!externalInput) return;
+    setInput(externalInput);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(externalInput.length, externalInput.length);
+    }, 50);
+  }, [externalInput]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -403,7 +421,46 @@ export function AgentChat({
     }
   }, [input, running, messages, selectedProvider, selectedModel, projectId, boardType, fileContext]);
 
+  // @mention helpers
+  const mentionFiles = mentionQuery !== null
+    ? files.filter(f => f.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 8)
+    : [];
+
+  const insertMention = (filename: string) => {
+    const after = input.slice(mentionStart + 1 + (mentionQuery?.length ?? 0));
+    const before = input.slice(0, mentionStart);
+    const newVal = `${before}@${filename} ${after}`;
+    setInput(newVal);
+    setMentionQuery(null);
+    setTimeout(() => {
+      const pos = mentionStart + filename.length + 2;
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(pos, pos);
+    }, 10);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInput(val);
+    const cursor = e.target.selectionStart ?? val.length;
+    const textBefore = val.slice(0, cursor);
+    const atMatch = textBefore.match(/@(\w*)$/);
+    if (atMatch && files.length > 0) {
+      setMentionQuery(atMatch[1]);
+      setMentionStart(cursor - atMatch[0].length);
+      setMentionIdx(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && mentionFiles.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIdx(i => Math.min(i + 1, mentionFiles.length - 1)); return; }
+      if (e.key === "ArrowUp")   { e.preventDefault(); setMentionIdx(i => Math.max(i - 1, 0)); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(mentionFiles[mentionIdx]); return; }
+      if (e.key === "Escape")    { setMentionQuery(null); return; }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -557,6 +614,25 @@ export function AgentChat({
           </div>
         )}
 
+        {/* @file mention dropdown */}
+        {mentionQuery !== null && mentionFiles.length > 0 && (
+          <div style={{ marginBottom: 6, border: "1px solid var(--b2)", borderRadius: 8, background: "var(--bg)", overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+            <div style={{ padding: "4px 10px", borderBottom: "1px solid var(--b1)", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", letterSpacing: "0.1em" }}>
+              @FILE — {mentionFiles.length} match{mentionFiles.length !== 1 ? "es" : ""}
+            </div>
+            {mentionFiles.map((f, i) => (
+              <button
+                key={f}
+                onMouseDown={(e) => { e.preventDefault(); insertMention(f); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "none", background: i === mentionIdx ? "var(--amber-lo)" : "transparent", color: i === mentionIdx ? "var(--amber)" : "var(--t2)", fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                onMouseEnter={() => setMentionIdx(i)}
+              >
+                <span style={{ color: "var(--t4)", fontSize: 10 }}>@</span>{f}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", minWidth: 0 }}>
           {/* Hidden file input */}
           <input
@@ -578,9 +654,9 @@ export function AgentChat({
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKey}
-            placeholder="Ask to edit, build, flash… or paste a photo of your circuit"
+            placeholder={files.length > 0 ? "Ask to edit, build, flash… type @ to mention a file" : "Ask to edit, build, flash… or paste a photo of your circuit"}
             disabled={running}
             rows={3}
             style={{ minHeight: 76, flex: 1, minWidth: 0, resize: "none", border: "1px solid var(--b2)", borderRadius: 8, background: "var(--s1)", color: "var(--t1)", padding: "10px 12px", fontFamily: "var(--font-mono)", fontSize: 12, lineHeight: 1.5, outline: "none", transition: "border-color 0.15s" }}

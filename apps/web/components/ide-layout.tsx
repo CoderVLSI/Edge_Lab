@@ -7,12 +7,14 @@ import { WebsocketProvider } from "y-websocket";
 import { CodeEditor } from "@edge-lab/editor";
 import { FileTree, type FileTreeNode } from "@edge-lab/ui";
 import { SerialMonitor, BoardSelector, BOARDS, type Board } from "@edge-lab/hardware";
-import { Files, GitBranch, Play, Upload, RefreshCw, Wifi, WifiOff, FileCode2, FileCog, FileText } from "lucide-react";
+import { Files, GitBranch, Play, Upload, RefreshCw, Wifi, WifiOff, FileCode2, FileCog, FileText, BookOpen, Search as SearchIcon } from "lucide-react";
 import { AgentChat } from "./agent-chat";
 import { GitPanel } from "./git-panel";
 import { TerminalPanel } from "./terminal-panel";
 import { SettingsModal } from "./settings-modal";
 import { KiCanvasViewer } from "./kicad-viewer";
+import { LibraryManager } from "./library-manager";
+import { SearchPalette, type PaletteFile } from "./search-palette";
 
 const SYNC_URL = process.env.NEXT_PUBLIC_SYNC_URL ?? "ws://localhost:1234";
 
@@ -45,6 +47,22 @@ const DEMO_CONTENT: Record<string, string> = {
 type Mode = "firmware" | "schematics" | "board";
 type BottomTab = "terminal" | "serial" | "problems";
 
+// Flatten file tree to palette entries
+function flattenFiles(nodes: FileTreeNode[], prefix = ""): PaletteFile[] {
+  const out: PaletteFile[] = [];
+  for (const n of nodes) {
+    if (n.type === "file") {
+      out.push({ id: n.id, name: n.name, path: prefix ? `${prefix}/${n.name}` : n.name });
+    } else if (n.children) {
+      out.push(...flattenFiles(n.children, prefix ? `${prefix}/${n.name}` : n.name));
+    }
+  }
+  return out;
+}
+
+const ALL_PALETTE_FILES = flattenFiles(DEMO_FILES);
+const ALL_FILE_NAMES = ALL_PALETTE_FILES.map(f => f.name);
+
 export function IdeLayout({ projectId }: { projectId: string }) {
   const [mode, setMode] = useState<Mode>("firmware");
   const [selectedFile, setSelectedFile] = useState<FileTreeNode | null>(DEMO_FILES[0].children![0]);
@@ -52,6 +70,9 @@ export function IdeLayout({ projectId }: { projectId: string }) {
   const [sidebarTab, setSidebarTab] = useState<"files" | "git">("files");
   const [bottomTab, setBottomTab] = useState<BottomTab>("terminal");
   const [syncStatus, setSyncStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
+  const [showLibManager, setShowLibManager] = useState(false);
+  const [showSearchPalette, setShowSearchPalette] = useState(false);
+  const [askToFixText, setAskToFixText] = useState<string | undefined>(undefined);
   const providerRef = useRef<WebsocketProvider | null>(null);
   const filesRef = useRef<Y.Map<Y.Text> | null>(null);
   const [, forceUpdate] = useState(0);
@@ -85,6 +106,36 @@ export function IdeLayout({ projectId }: { projectId: string }) {
       doc.destroy();
     };
   }, [projectId]);
+
+  // Ctrl+K — open search palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearchPalette(v => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const handleAskToFix = (errorText: string) => {
+    setAskToFixText(errorText);
+    // Clear it after a tick so the useEffect in AgentChat fires on each new error
+    setTimeout(() => setAskToFixText(undefined), 100);
+  };
+
+  const handlePaletteSelect = (file: PaletteFile) => {
+    const findNode = (nodes: FileTreeNode[]): FileTreeNode | null => {
+      for (const n of nodes) {
+        if (n.id === file.id) return n;
+        if (n.children) { const r = findNode(n.children); if (r) return r; }
+      }
+      return null;
+    };
+    const node = findNode(DEMO_FILES);
+    if (node) { setSelectedFile(node); setMode("firmware"); }
+  };
 
   const getYText = (name: string): Y.Text | null => {
     if (!filesRef.current) return null;
@@ -168,6 +219,22 @@ export function IdeLayout({ projectId }: { projectId: string }) {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Ctrl+K search */}
+          <button
+            onClick={() => setShowSearchPalette(true)}
+            title="Go to file (Ctrl+K)"
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 5, border: "1px solid var(--b2)", background: "transparent", color: "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer", letterSpacing: "0.04em" }}
+          >
+            <SearchIcon size={11} /> <span style={{ color: "var(--t4)" }}>Ctrl+K</span>
+          </button>
+          {/* Library Manager */}
+          <button
+            onClick={() => setShowLibManager(true)}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 5, border: "1px solid var(--b2)", background: "transparent", color: "var(--t2)", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 11, cursor: "pointer", letterSpacing: "0.03em" }}
+          >
+            <BookOpen size={11} /> Libs
+          </button>
+          <div style={{ width: 1, height: 16, background: "var(--b2)" }} />
           <button
             onClick={() => window.dispatchEvent(new CustomEvent("edge-lab:build"))}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 5, border: "1px solid var(--b2)", background: "transparent", color: "var(--t2)", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 12, cursor: "pointer", letterSpacing: "0.03em" }}
@@ -256,7 +323,7 @@ export function IdeLayout({ projectId }: { projectId: string }) {
                 </div>
                 <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
                   <div style={{ position: "absolute", inset: 0, display: bottomTab === "terminal" ? "flex" : "none", flexDirection: "column" }}>
-                    <TerminalPanel />
+                    <TerminalPanel projectId={projectId} onAskToFix={handleAskToFix} />
                   </div>
                   <div style={{ position: "absolute", inset: 0, display: bottomTab === "serial" ? "flex" : "none", flexDirection: "column" }}>
                     <SerialMonitor />
@@ -310,11 +377,24 @@ export function IdeLayout({ projectId }: { projectId: string }) {
               boardType={board.name}
               fileContext={selectedFile ? DEMO_CONTENT[selectedFile.name] : undefined}
               mode={mode}
+              files={ALL_FILE_NAMES}
+              externalInput={askToFixText}
             />
           </div>
         </div>
 
       </div>
+
+      {/* Library Manager overlay */}
+      <LibraryManager isOpen={showLibManager} onClose={() => setShowLibManager(false)} projectId={projectId} />
+
+      {/* Ctrl+K search palette */}
+      <SearchPalette
+        files={ALL_PALETTE_FILES}
+        isOpen={showSearchPalette}
+        onClose={() => setShowSearchPalette(false)}
+        onSelect={handlePaletteSelect}
+      />
 
       <style>{`
         * { box-sizing: border-box; }

@@ -412,7 +412,7 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
               Attach an image • paste a circuit photo • dictate with mic
             </div>
             <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
-              {["bash", "files", "git", "pio", "serial"].map(t => (
+              {["bash", "files", "git", "pio", "serial", "search", "fetch", "todo"].map(t => (
                 <span key={t} style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--amber)", border: "1px solid rgba(224,160,32,0.25)", borderRadius: "var(--r1)", padding: "1px 5px", background: "var(--amber-lo)" }}>{t}</span>
               ))}
             </div>

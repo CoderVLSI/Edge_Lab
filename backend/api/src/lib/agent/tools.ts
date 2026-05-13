@@ -215,14 +215,27 @@ export const TOOL_DEFS: ToolDef[] = [
   },
   {
     name: "web_search",
-    description: "Search the web for documentation, error messages, datasheets, Arduino libraries, or anything else. Returns a list of titles + snippets + URLs. Use this when you need external information not in the codebase.",
+    description: "Search the web for documentation, error messages, datasheets, Arduino libraries, or anything else. Returns Google results (title + snippet + URL) via Serper. Use this BEFORE web_fetch to find relevant URLs, then use web_fetch to read the full page.",
     input_schema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Search query, e.g. 'ESP32 SPI OLED SSD1306 Arduino example'" },
         num_results: { type: "string", description: "Number of results to return (default: 5, max: 10)" },
+        type: { type: "string", description: "Search type: 'search' (default), 'news', 'images'", enum: ["search", "news", "images"] },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "web_fetch",
+    description: "Fetch the full content of a URL and return its readable text. Use this to read documentation pages, datasheets, GitHub READMEs, forum answers, or any webpage after finding it with web_search.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Full URL to fetch, e.g. 'https://docs.arduino.cc/libraries/wifi/'" },
+        max_chars: { type: "string", description: "Max characters to return (default: 8000, max: 20000)" },
+      },
+      required: ["url"],
     },
   },
   {
@@ -486,17 +499,57 @@ print(response.decode("utf-8", errors="replace"))
       const query = input.query?.trim();
       if (!query) return "No search query provided.";
       const numResults = Math.min(parseInt(input.num_results ?? "5", 10), 10);
+      const searchType = input.type ?? "search";
 
-      // ── Try Brave Search API first (best results) ───────────────────────────
+      // ── Tier 1: Serper (Google results, best quality) ───────────────────────
+      const serperKey = process.env.SERPER_API_KEY;
+      if (serperKey) {
+        const endpoint = searchType === "news"
+          ? "https://google.serper.dev/news"
+          : "https://google.serper.dev/search";
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ q: query, num: numResults }),
+        });
+        if (res.ok) {
+          const data = await res.json() as {
+            organic?: Array<{ title: string; snippet?: string; link: string; position?: number }>;
+            news?: Array<{ title: string; snippet?: string; link: string; date?: string }>;
+            answerBox?: { answer?: string; snippet?: string; title?: string };
+            knowledgeGraph?: { title?: string; description?: string };
+          };
+          const sections: string[] = [];
+
+          // Answer box (direct answer from Google)
+          if (data.answerBox?.answer || data.answerBox?.snippet) {
+            sections.push(`⚡ Answer: ${data.answerBox.answer ?? data.answerBox.snippet}`);
+          }
+          // Knowledge graph
+          if (data.knowledgeGraph?.description) {
+            sections.push(`📖 ${data.knowledgeGraph.title}: ${data.knowledgeGraph.description}`);
+          }
+          // Organic / news results
+          const items = (searchType === "news" ? data.news : data.organic) ?? [];
+          if (items.length) {
+            const lines = items.slice(0, numResults).map((r, i) => {
+              const dateStr = "date" in r && r.date ? ` (${r.date})` : "";
+              return `[${i + 1}] ${r.title}${dateStr}\n    ${r.snippet ?? "(no snippet)"}\n    🔗 ${r.link}`;
+            });
+            sections.push(lines.join("\n\n"));
+          }
+          if (sections.length) {
+            return `🔍 Google results for "${query}":\n\n${sections.join("\n\n---\n\n")}`;
+          }
+        }
+      }
+
+      // ── Tier 2: Brave Search API ────────────────────────────────────────────
       const braveKey = process.env.BRAVE_SEARCH_API_KEY;
       if (braveKey) {
         const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${numResults}`;
         const res = await fetch(url, {
-          headers: {
-            "Accept": "application/json",
-            "Accept-Encoding": "gzip",
-            "X-Subscription-Token": braveKey,
-          },
+          headers: { "Accept": "application/json", "X-Subscription-Token": braveKey },
         });
         if (res.ok) {
           const data = await res.json() as {
@@ -507,62 +560,88 @@ print(response.decode("utf-8", errors="replace"))
             const lines = results.slice(0, numResults).map((r, i) =>
               `[${i + 1}] ${r.title}\n    ${r.description ?? "(no snippet)"}\n    🔗 ${r.url}`
             );
-            return `Web search results for "${query}":\n\n${lines.join("\n\n")}`;
+            return `🔍 Brave results for "${query}":\n\n${lines.join("\n\n")}`;
           }
         }
       }
 
-      // ── Fallback: DuckDuckGo Instant Answer API (no key needed) ────────────
+      // ── Tier 3: DuckDuckGo Instant Answers (no key) ────────────────────────
       const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-      const ddgRes = await fetch(ddgUrl, {
-        headers: { "User-Agent": "Edge-Lab-IDE/1.0" },
-      });
-      if (!ddgRes.ok) throw new Error(`DuckDuckGo API error: ${ddgRes.status}`);
+      const ddgRes = await fetch(ddgUrl, { headers: { "User-Agent": "Edge-Lab-IDE/1.0" } });
+      if (!ddgRes.ok) throw new Error(`Search API error: ${ddgRes.status}`);
       const ddg = await ddgRes.json() as {
-        AbstractText?: string;
-        AbstractURL?: string;
-        AbstractSource?: string;
+        AbstractText?: string; AbstractURL?: string; AbstractSource?: string;
         RelatedTopics?: Array<{ Text?: string; FirstURL?: string; Topics?: Array<{ Text?: string; FirstURL?: string }> }>;
         Answer?: string;
-        AnswerType?: string;
       };
 
       const sections: string[] = [];
+      if (ddg.Answer) sections.push(`⚡ Instant Answer: ${ddg.Answer}`);
+      if (ddg.AbstractText) sections.push(`📖 ${ddg.AbstractSource}: ${ddg.AbstractText.slice(0, 500)}\n   🔗 ${ddg.AbstractURL}`);
 
-      // Instant answer (calculator, conversions, etc.)
-      if (ddg.Answer) {
-        sections.push(`⚡ Instant Answer: ${ddg.Answer}`);
-      }
-
-      // Abstract (Wikipedia summary)
-      if (ddg.AbstractText) {
-        sections.push(`📖 ${ddg.AbstractSource}: ${ddg.AbstractText.slice(0, 500)}\n   🔗 ${ddg.AbstractURL}`);
-      }
-
-      // Related topics
       const topics: string[] = [];
       for (const t of ddg.RelatedTopics ?? []) {
         if (topics.length >= numResults) break;
-        if (t.Text && t.FirstURL) {
-          topics.push(`• ${t.Text.slice(0, 200)}\n  🔗 ${t.FirstURL}`);
-        }
-        // Some topics are grouped (have a Topics array)
+        if (t.Text && t.FirstURL) topics.push(`• ${t.Text.slice(0, 200)}\n  🔗 ${t.FirstURL}`);
         for (const sub of t.Topics ?? []) {
           if (topics.length >= numResults) break;
-          if (sub.Text && sub.FirstURL) {
-            topics.push(`• ${sub.Text.slice(0, 200)}\n  🔗 ${sub.FirstURL}`);
-          }
+          if (sub.Text && sub.FirstURL) topics.push(`• ${sub.Text.slice(0, 200)}\n  🔗 ${sub.FirstURL}`);
         }
       }
-      if (topics.length) {
-        sections.push(`Related results:\n${topics.join("\n\n")}`);
-      }
+      if (topics.length) sections.push(topics.join("\n\n"));
 
       if (!sections.length) {
-        return `No results found for "${query}". Try a more specific query, or set BRAVE_SEARCH_API_KEY in .env for full web search.`;
+        return `No results found for "${query}".\n💡 Add SERPER_API_KEY to .env for Google results (free tier: 2500 searches/mo at serper.dev).`;
+      }
+      return `🔍 DuckDuckGo results for "${query}":\n\n${sections.join("\n\n---\n\n")}\n\n💡 Add SERPER_API_KEY to .env for full Google results.`;
+    }
+
+    case "web_fetch": {
+      const url = input.url?.trim();
+      if (!url) return "No URL provided.";
+      if (!/^https?:\/\//i.test(url)) return `Invalid URL: "${url}". Must start with http:// or https://`;
+      const maxChars = Math.min(parseInt(input.max_chars ?? "8000", 10), 20000);
+
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; Edge-Lab-IDE/1.0; +https://github.com/CoderVLSI/Edge_Lab)",
+          "Accept": "text/html,application/xhtml+xml,text/plain,*/*",
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!res.ok) return `HTTP ${res.status} ${res.statusText} — could not fetch ${url}`;
+
+      const contentType = res.headers.get("content-type") ?? "";
+      const rawText = await res.text();
+
+      let text: string;
+      if (contentType.includes("text/html") || rawText.trimStart().startsWith("<")) {
+        // Strip HTML: remove scripts/styles, collapse tags to spaces, decode entities
+        text = rawText
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+          .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+          .replace(/<header[\s\S]*?<\/header>/gi, "")
+          .replace(/<!--[\s\S]*?-->/g, "")
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/?(p|div|h[1-6]|li|tr|section|article)[^>]*>/gi, "\n")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+          .replace(/&nbsp;/g, " ").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+          .replace(/\t/g, "  ")
+          .replace(/\n{3,}/g, "\n\n")  // collapse blank lines
+          .trim();
+      } else {
+        text = rawText.trim();
       }
 
-      return `Web search results for "${query}":\n\n${sections.join("\n\n---\n\n")}\n\n💡 Tip: set BRAVE_SEARCH_API_KEY in .env for richer web results.`;
+      const truncated = text.length > maxChars;
+      const output = truncated ? text.slice(0, maxChars) : text;
+      const suffix = truncated ? `\n\n[... truncated at ${maxChars} chars — ${text.length} total. Use max_chars=20000 for more.]` : "";
+
+      return `📄 Content from ${url}:\n\n${output}${suffix}`;
     }
 
     case "todo": {

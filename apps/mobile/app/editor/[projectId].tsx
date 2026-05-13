@@ -25,12 +25,14 @@ import { useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
-const FILES_KEY   = (id: string) => `edge-lab:files:${id}`;
+const FILES_KEY    = (id: string) => `edge-lab:files:${id}`;
 const SETTINGS_KEY = "edge-lab:settings";
+const AUTH_KEY     = "edge-lab:auth";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProjectFile { id: string; path: string; content: string; }
-interface Settings    { anthropicApiKey: string; }
+interface Settings    { anthropicApiKey: string; backendUrl: string; }
+interface AuthData    { token: string; email: string; }
 interface AgentImage  { mediaType: string; data: string; preview: string; }
 interface AgentMessage { role: "user" | "assistant"; text: string; images?: { preview: string }[]; }
 
@@ -74,13 +76,89 @@ const DEMO_FILES: ProjectFile[] = [
 async function getSettings(): Promise<Settings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    if (raw) return JSON.parse(raw) as Settings;
+    if (raw) return { backendUrl: "", ...JSON.parse(raw) as Settings };
   } catch { /* ignore */ }
-  return { anthropicApiKey: "" };
+  return { anthropicApiKey: "", backendUrl: "" };
 }
 
 async function saveSettings(s: Settings): Promise<void> {
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+async function getAuth(): Promise<AuthData | null> {
+  try {
+    const raw = await AsyncStorage.getItem(AUTH_KEY);
+    return raw ? JSON.parse(raw) as AuthData : null;
+  } catch { return null; }
+}
+
+async function saveAuth(data: AuthData | null): Promise<void> {
+  if (data) await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(data));
+  else await AsyncStorage.removeItem(AUTH_KEY);
+}
+
+/** Try to login via backend and persist the JWT. */
+async function loginBackend(backendUrl: string, email: string, password: string): Promise<AuthData> {
+  const res = await fetch(`${backendUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json() as { token?: string; error?: string };
+  if (!res.ok || !data.token) throw new Error(data.error ?? "Login failed");
+  return { token: data.token, email };
+}
+
+/** Sync local files to backend (upsert each file). */
+async function syncFilesToBackend(backendUrl: string, token: string, projectId: string, files: ProjectFile[]): Promise<void> {
+  for (const f of files) {
+    await fetch(`${backendUrl}/api/projects/${projectId}/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ path: f.path, content: f.content }),
+    });
+  }
+}
+
+/** Call the backend agent (streaming SSE). */
+async function callBackendAgent(
+  backendUrl: string,
+  token: string,
+  projectId: string,
+  messages: { role: "user" | "assistant"; content: string | object[] }[],
+  apiKey: string,
+  onChunk: (text: string) => void
+): Promise<void> {
+  const res = await fetch(`${backendUrl}/api/agent/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(apiKey ? { "X-ANTHROPIC_API_KEY": apiKey } : {}),
+    },
+    body: JSON.stringify({ messages, provider: "anthropic", model: "claude-sonnet-4-5", projectId }),
+  });
+  if (!res.ok || !res.body) throw new Error(`Backend error ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() ?? "";
+    for (const part of parts) {
+      if (!part.startsWith("data: ")) continue;
+      const raw = part.slice(6).trim();
+      if (raw === "[DONE]") continue;
+      try {
+        const ev = JSON.parse(raw) as { type: string; text?: string; message?: string };
+        if (ev.type === "text" && ev.text) onChunk(ev.text);
+        if (ev.type === "error" && ev.message) onChunk(`\n${ev.message}`);
+      } catch { /* skip */ }
+    }
+  }
 }
 
 async function getFiles(projectId: string): Promise<ProjectFile[]> {
@@ -196,9 +274,16 @@ export default function EditorScreen() {
   const webViewRef = useRef<WebView>(null);
 
   // Settings
-  const [settings, setSettings] = useState<Settings>({ anthropicApiKey: "" });
+  const [settings, setSettings] = useState<Settings>({ anthropicApiKey: "", backendUrl: "" });
   const [settingsModal, setSettingsModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [backendUrlInput, setBackendUrlInput] = useState("");
+  // Auth
+  const [auth, setAuth] = useState<AuthData | null>(null);
+  const [loginModal, setLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
 
   // Board
   const [board, setBoard] = useState<Board>(BOARDS[3]);
@@ -220,17 +305,20 @@ export default function EditorScreen() {
   // ── Load on mount ──
   useEffect(() => {
     (async () => {
-      const [fs, sett] = await Promise.all([
+      const [fs, sett, authData] = await Promise.all([
         getFiles(projectId),
         getSettings(),
+        getAuth(),
       ]);
       setFiles(fs);
       setSelectedFile(fs[0] ?? null);
       setEditorContent(fs[0]?.content ?? "");
       setSettings(sett);
       setApiKeyInput(sett.anthropicApiKey);
+      setBackendUrlInput(sett.backendUrl ?? "");
+      if (authData) setAuth(authData);
       // Prompt for API key on first open if not set
-      if (!sett.anthropicApiKey) setSettingsModal(true);
+      if (!sett.anthropicApiKey && !authData) setSettingsModal(true);
     })();
   }, [projectId]);
 
@@ -287,10 +375,26 @@ export default function EditorScreen() {
 
   // ── Settings save ──
   const saveSettingsModal = async () => {
-    const s: Settings = { anthropicApiKey: apiKeyInput.trim() };
+    const s: Settings = { anthropicApiKey: apiKeyInput.trim(), backendUrl: backendUrlInput.trim() };
     setSettings(s);
     await saveSettings(s);
     setSettingsModal(false);
+  };
+
+  // ── Backend login ──
+  const doLogin = async () => {
+    setLoginError("");
+    try {
+      const backendUrl = settings.backendUrl || backendUrlInput.trim();
+      if (!backendUrl) { setLoginError("Set Backend URL in Settings first"); return; }
+      const data = await loginBackend(backendUrl, loginEmail.trim(), loginPassword);
+      setAuth(data);
+      await saveAuth(data);
+      // Sync local files to backend
+      await syncFilesToBackend(backendUrl, data.token, projectId as string, files);
+      setBuildLog(l => [...l, `✓ Synced ${files.length} file(s) to backend`]);
+      setLoginModal(false);
+    } catch (e) { setLoginError(String(e)); }
   };
 
   // ── Image picker ──
@@ -324,12 +428,13 @@ export default function EditorScreen() {
     }
   };
 
-  // ── Agent send (direct Anthropic call) ──
+  // ── Agent send — uses backend (streaming) when authed, else direct Anthropic ──
   const sendAgent = useCallback(async () => {
     const text = agentInput.trim();
     if ((!text && !agentImages.length) || agentRunning) return;
 
-    if (!settings.anthropicApiKey) {
+    const hasBackend = !!(auth && settings.backendUrl);
+    if (!hasBackend && !settings.anthropicApiKey) {
       setSettingsModal(true);
       return;
     }
@@ -347,10 +452,9 @@ export default function EditorScreen() {
     const placeholder: AgentMessage = { role: "assistant", text: "Thinking…" };
     setAgentMessages((prev) => [...prev, userMsg, placeholder]);
 
-    // Build Anthropic message history
+    // Build message history
     const history = [...agentMessages, userMsg].map((m): { role: "user" | "assistant"; content: string | object[] } => {
       if (m.role === "assistant") return { role: "assistant", content: m.text };
-      // User message — may have images
       const msgImgs = imgs.length > 0 && m === userMsg ? imgs : [];
       if (!msgImgs.length) return { role: "user", content: m.text };
       return {
@@ -373,10 +477,29 @@ export default function EditorScreen() {
     ].filter(Boolean).join("\n\n");
 
     try {
-      const response = await callClaude(settings.anthropicApiKey, history, system);
-      setAgentMessages((prev) =>
-        prev.map((m, i) => i === prev.length - 1 ? { ...m, text: response } : m)
-      );
+      if (hasBackend) {
+        // ── Streaming via backend agent ──────────────────────────────────────
+        let accumulated = "";
+        await callBackendAgent(
+          settings.backendUrl,
+          auth!.token,
+          projectId as string,
+          history,
+          settings.anthropicApiKey,
+          (chunk) => {
+            accumulated += chunk;
+            setAgentMessages((prev) =>
+              prev.map((m, i) => i === prev.length - 1 ? { ...m, text: accumulated } : m)
+            );
+          }
+        );
+      } else {
+        // ── Direct Anthropic fallback ─────────────────────────────────────────
+        const response = await callClaude(settings.anthropicApiKey, history, system);
+        setAgentMessages((prev) =>
+          prev.map((m, i) => i === prev.length - 1 ? { ...m, text: response } : m)
+        );
+      }
     } catch (e) {
       const errMsg = String(e).includes("401")
         ? "Invalid API key. Tap ⚙ to update it."
@@ -388,7 +511,7 @@ export default function EditorScreen() {
       setAgentRunning(false);
       setTimeout(() => agentScrollRef.current?.scrollToEnd({ animated: true }), 150);
     }
-  }, [agentInput, agentImages, agentRunning, agentMessages, settings, board, selectedFile, editorContent]);
+  }, [agentInput, agentImages, agentRunning, agentMessages, settings, auth, board, selectedFile, editorContent, projectId]);
 
   const lang = selectedFile?.path.endsWith(".py")
     ? "python"
@@ -573,10 +696,9 @@ export default function EditorScreen() {
           <Pressable>
             <View style={s.modalSheet}>
               <Text style={s.modalTitle}>⚙ Settings</Text>
+
               <Text style={s.label}>Anthropic API Key</Text>
-              <Text style={s.hint}>
-                Get yours free at console.anthropic.com — the AI agent calls Claude directly from your device.
-              </Text>
+              <Text style={s.hint}>Direct Claude calls from your device (no backend needed).</Text>
               <TextInput
                 style={[s.input, { fontFamily: "monospace", fontSize: 12 }]}
                 value={apiKeyInput}
@@ -587,17 +709,67 @@ export default function EditorScreen() {
                 autoCorrect={false}
                 secureTextEntry
               />
-              <TouchableOpacity
-                style={[s.createBtn, !apiKeyInput.trim() && s.createBtnDisabled]}
-                onPress={saveSettingsModal}
-                disabled={!apiKeyInput.trim()}
-              >
+
+              <Text style={[s.label, { marginTop: 14 }]}>Backend URL (optional)</Text>
+              <Text style={s.hint}>Point to your Edge Lab backend for full agent tools + file sync.</Text>
+              <TextInput
+                style={[s.input, { fontFamily: "monospace", fontSize: 12 }]}
+                value={backendUrlInput}
+                onChangeText={setBackendUrlInput}
+                placeholder="http://192.168.x.x:4000"
+                placeholderTextColor="#52525b"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+
+              {/* Sign-in button when backend URL is set */}
+              {backendUrlInput.trim() && !auth && (
+                <TouchableOpacity
+                  style={[s.createBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: "#e0a020", marginTop: 8 }]}
+                  onPress={() => { saveSettingsModal(); setLoginModal(true); }}
+                >
+                  <Text style={[s.createBtnText, { color: "#e0a020" }]}>Sign In to Backend →</Text>
+                </TouchableOpacity>
+              )}
+              {auth && (
+                <View style={{ padding: 8, borderRadius: 4, backgroundColor: "#14532d22", borderWidth: 1, borderColor: "#4ec9b044", marginTop: 8 }}>
+                  <Text style={{ color: "#4ec9b0", fontFamily: "monospace", fontSize: 11 }}>✓ Signed in as {auth.email}</Text>
+                  <TouchableOpacity onPress={() => { setAuth(null); saveAuth(null); }}>
+                    <Text style={{ color: "#71717a", fontSize: 10, marginTop: 4 }}>Sign out</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <TouchableOpacity style={[s.createBtn, { marginTop: 16 }]} onPress={saveSettingsModal}>
                 <Text style={s.createBtnText}>Save</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.createBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: "#3f3f46", marginTop: 8 }]}
                 onPress={() => setSettingsModal(false)}
               >
+                <Text style={[s.createBtnText, { color: "#71717a" }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Login modal ── */}
+      <Modal visible={loginModal} transparent animationType="fade">
+        <Pressable style={s.modalBackdrop} onPress={() => setLoginModal(false)}>
+          <Pressable>
+            <View style={s.modalSheet}>
+              <Text style={s.modalTitle}>Sign In to Backend</Text>
+              {loginError ? <Text style={{ color: "#f44747", fontSize: 11, marginBottom: 8, fontFamily: "monospace" }}>{loginError}</Text> : null}
+              <Text style={s.label}>Email</Text>
+              <TextInput style={s.input} value={loginEmail} onChangeText={setLoginEmail} placeholder="you@example.com" placeholderTextColor="#52525b" autoCapitalize="none" keyboardType="email-address" />
+              <Text style={[s.label, { marginTop: 10 }]}>Password</Text>
+              <TextInput style={s.input} value={loginPassword} onChangeText={setLoginPassword} placeholder="••••••••" placeholderTextColor="#52525b" secureTextEntry />
+              <TouchableOpacity style={[s.createBtn, { marginTop: 14 }]} onPress={doLogin}>
+                <Text style={s.createBtnText}>Sign In</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.createBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: "#3f3f46", marginTop: 8 }]} onPress={() => setLoginModal(false)}>
                 <Text style={[s.createBtnText, { color: "#71717a" }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
@@ -622,17 +794,18 @@ export default function EditorScreen() {
               </View>
             </View>
 
-            {/* API key warning */}
-            {!settings.anthropicApiKey && (
-              <TouchableOpacity
-                style={s.apiKeyWarning}
-                onPress={() => setSettingsModal(true)}
-              >
-                <Text style={s.apiKeyWarningText}>
-                  ⚠ No API key set — tap to add your Anthropic key
+            {/* Status bar */}
+            {auth ? (
+              <View style={{ backgroundColor: "#14532d22", borderBottomWidth: 1, borderColor: "#4ec9b033", padding: 6, paddingHorizontal: 12 }}>
+                <Text style={{ color: "#4ec9b0", fontSize: 10, fontFamily: "monospace" }}>
+                  ✓ Backend agent — {auth.email} · tools: bash, files, git, pio, serial
                 </Text>
+              </View>
+            ) : !settings.anthropicApiKey ? (
+              <TouchableOpacity style={s.apiKeyWarning} onPress={() => setSettingsModal(true)}>
+                <Text style={s.apiKeyWarningText}>⚠ No API key — tap to add your Anthropic key</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
 
             <ScrollView
               ref={agentScrollRef}

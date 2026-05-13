@@ -4,14 +4,106 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { readDir, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { load } from "@tauri-apps/plugin-store";
 import { FileTree, type FileTreeNode } from "@edge-lab/ui";
 import { SerialMonitor, BoardSelector, BOARDS, type Board } from "@edge-lab/hardware";
 import {
   FolderOpen, Upload, Play, ChevronRight, Wifi, GitBranch, GitMerge,
-  Bot, Send, Loader2, Plus, Zap, Mic, MicOff, Paperclip, X as XIcon, Image,
+  Bot, Send, Loader2, Plus, Zap, Mic, MicOff, X as XIcon, Image, LogIn, LogOut, User,
 } from "lucide-react";
 import * as Y from "yjs";
 import { CodeEditor } from "@edge-lab/editor";
+
+// ── Auth helpers ─────────────────────────────────────────────────────────────
+
+const AUTH_STORE_KEY = "edge-lab-auth";
+
+async function getStoredToken(): Promise<string | null> {
+  try {
+    const store = await load(AUTH_STORE_KEY);
+    return (await store.get<string>("jwt")) ?? null;
+  } catch { return null; }
+}
+
+async function setStoredToken(token: string | null): Promise<void> {
+  try {
+    const store = await load(AUTH_STORE_KEY);
+    if (token) await store.set("jwt", token);
+    else await store.delete("jwt");
+    await store.save();
+  } catch { /* ignore */ }
+}
+
+// ── Login Modal ───────────────────────────────────────────────────────────────
+function LoginModal({ onLogin, onClose }: { onLogin: (token: string, email: string) => void; onClose: () => void }) {
+  const [email, setEmail]     = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode]       = useState<"login" | "register">("login");
+
+  const submit = async () => {
+    if (!email.trim() || !password.trim()) { setError("Email and password required"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API}/api/auth/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json() as { token?: string; error?: string };
+      if (!res.ok || !data.token) { setError(data.error ?? "Authentication failed"); return; }
+      await setStoredToken(data.token);
+      onLogin(data.token, email.trim());
+    } catch (e) {
+      setError(`Cannot reach backend (${String(e)}). Start it with: cd backend/api && pnpm dev`);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "var(--s2)", border: "1px solid var(--b2)", borderRadius: "var(--r3)", padding: 28, width: 340, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, color: "var(--amber)" }}>
+            <Zap size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 6 }} />
+            {mode === "login" ? "Sign In" : "Create Account"}
+          </span>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--t4)", cursor: "pointer" }}><XIcon size={14} /></button>
+        </div>
+
+        {error && <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--red)", padding: "6px 8px", background: "var(--red-lo)", borderRadius: "var(--r1)" }}>{error}</div>}
+
+        {[
+          { label: "Email", value: email, set: setEmail, type: "email" },
+          { label: "Password", value: password, set: setPassword, type: "password" },
+        ].map(f => (
+          <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <label style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)" }}>{f.label}</label>
+            <input
+              type={f.type} value={f.value} onChange={e => f.set(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && submit()}
+              autoComplete={f.type === "password" ? "current-password" : "email"}
+              style={{ height: 32, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s3)", color: "var(--t1)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: 12, outline: "none" }}
+              onFocus={e => { e.currentTarget.style.borderColor = "var(--amber)"; }}
+              onBlur={e => { e.currentTarget.style.borderColor = "var(--b2)"; }}
+            />
+          </div>
+        ))}
+
+        <button onClick={submit} disabled={loading}
+          style={{ height: 34, border: "none", borderRadius: "var(--r2)", background: loading ? "var(--s3)" : "var(--amber)", color: loading ? "var(--t4)" : "#0a0a0a", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <LogIn size={13} />}
+          {loading ? "Signing in…" : mode === "login" ? "Sign In" : "Create Account"}
+        </button>
+
+        <button onClick={() => { setMode(m => m === "login" ? "register" : "login"); setError(""); }}
+          style={{ background: "transparent", border: "none", color: "var(--t3)", fontFamily: "var(--font-mono)", fontSize: 10, cursor: "pointer", textAlign: "center" }}>
+          {mode === "login" ? "No account? Register →" : "Already have an account? Sign in →"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Agent Chat (inline, no import from web) ─────────────────────────────────
 
@@ -71,7 +163,7 @@ declare global {
   }
 }
 
-function AgentChatPanel({ projectPath }: { projectPath: string | null }) {
+function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null; authToken: string | null }) {
   const [messages, setMessages]       = useState<AgentMsg[]>([]);
   const [input, setInput]             = useState("");
   const [running, setRunning]         = useState(false);
@@ -183,6 +275,7 @@ function AgentChatPanel({ projectPath }: { projectPath: string | null }) {
     try {
       const apiKey = localStorage.getItem(`${provider}-api-key`) ?? "";
       const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
       if (provider === "anthropic" && apiKey) headers["X-ANTHROPIC_API_KEY"]  = apiKey;
       if (provider === "openai"    && apiKey) headers["X-OPENAI_API_KEY"]     = apiKey;
       if (provider === "gemini"    && apiKey) headers["X-GEMINI_API_KEY"]     = apiKey;
@@ -237,6 +330,14 @@ function AgentChatPanel({ projectPath }: { projectPath: string | null }) {
                 const next = [...prev];
                 const last = next[next.length - 1];
                 if (last?.role === "assistant") last.text += ev.text;
+                return next;
+              });
+            }
+            if (ev.type === "error") {
+              setMessages(prev => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === "assistant") { last.text = ev.message; last.streaming = false; }
                 return next;
               });
             }
@@ -448,6 +549,9 @@ function AgentChatPanel({ projectPath }: { projectPath: string | null }) {
 
 type BottomTab = "terminal" | "serial" | "ports" | "git";
 
+// ── Context menu state ───────────────────────────────────────────────────────
+interface CtxMenu { x: number; y: number; node: FileTreeNode | null; }
+
 export function DesktopApp() {
   const [rootPath, setRootPath]       = useState<string | null>(null);
   const [files, setFiles]             = useState<FileTreeNode[]>([]);
@@ -464,12 +568,25 @@ export function DesktopApp() {
   const [gitLog, setGitLog]           = useState<string[]>([]);
   const [gitRunning, setGitRunning]   = useState(false);
   const [shellRunning, setShellRunning] = useState(false);
+  // Context menu
+  const [ctxMenu, setCtxMenu]         = useState<CtxMenu | null>(null);
+  const [renameTarget, setRenameTarget] = useState<FileTreeNode | null>(null);
+  const [renameValue, setRenameValue]  = useState("");
+  // Auth
+  const [authToken, setAuthToken]     = useState<string | null>(null);
+  const [authEmail, setAuthEmail]     = useState<string | null>(null);
+  const [showLogin, setShowLogin]     = useState(false);
   // Per-file Yjs docs: Record<fileId, { doc, text }>
   const yDocsRef = useRef<Record<string, { doc: Y.Doc; text: Y.Text }>>({});
   const [, forceUpdate] = useState(0);
   const activeFile  = openFiles.find(f => f.id === activeFileId) ?? null;
   const activeYText = activeFileId ? (yDocsRef.current[activeFileId]?.text ?? null) : null;
   const buildScrollRef = useRef<HTMLDivElement>(null);
+
+  // ── Load stored auth token on mount ──
+  useEffect(() => {
+    getStoredToken().then(token => { if (token) setAuthToken(token); });
+  }, []);
 
   // ── Scroll build output to bottom ──
   useEffect(() => {
@@ -527,19 +644,7 @@ export function DesktopApp() {
     const selected = await open({ directory: true, multiple: false });
     if (!selected || typeof selected !== "string") return;
     setRootPath(selected);
-    try {
-      const entries = await readDir(selected);
-      const nodes: FileTreeNode[] = entries.map(e => ({
-        id: e.name ?? "", name: e.name ?? "",
-        type: e.isDirectory ? "directory" : "file",
-      }));
-      setFiles(nodes.sort((a, b) => {
-        if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      }));
-    } catch (e) {
-      setBuildOutput([`Error reading folder: ${String(e)}`]);
-    }
+    await refreshFiles(selected);
   };
 
   const openFile = async (node: FileTreeNode) => {
@@ -584,6 +689,62 @@ export function DesktopApp() {
     } catch (e) {
       setBuildOutput(o => [...o, `Save error: ${String(e)}`]);
     }
+  };
+
+  // ── File management ──
+  const refreshFiles = async (dir?: string) => {
+    const target = dir ?? rootPath;
+    if (!target) return;
+    try {
+      const entries = await readDir(target);
+      const nodes: FileTreeNode[] = entries.map(e => ({
+        id: e.name ?? "", name: e.name ?? "",
+        type: e.isDirectory ? "directory" : "file",
+      }));
+      setFiles(nodes.sort((a, b) => {
+        if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      }));
+    } catch { /* ignore */ }
+  };
+
+  const newFile = async () => {
+    if (!rootPath) return;
+    const name = prompt("New file name:");
+    if (!name?.trim()) return;
+    try {
+      await writeTextFile(`${rootPath}/${name.trim()}`, "");
+      await refreshFiles();
+    } catch (e) { setBuildOutput(o => [...o, `Error: ${String(e)}`]); }
+    setCtxMenu(null);
+  };
+
+  const deleteFile = async (node: FileTreeNode) => {
+    if (!rootPath) return;
+    const { remove } = await import("@tauri-apps/plugin-fs");
+    try {
+      await remove(`${rootPath}/${node.name}`);
+      closeFile(node.id);
+      await refreshFiles();
+    } catch (e) { setBuildOutput(o => [...o, `Delete error: ${String(e)}`]); }
+    setCtxMenu(null);
+  };
+
+  const startRename = (node: FileTreeNode) => {
+    setRenameTarget(node);
+    setRenameValue(node.name);
+    setCtxMenu(null);
+  };
+
+  const commitRename = async () => {
+    if (!rootPath || !renameTarget || !renameValue.trim()) { setRenameTarget(null); return; }
+    const { rename } = await import("@tauri-apps/plugin-fs");
+    try {
+      await rename(`${rootPath}/${renameTarget.name}`, `${rootPath}/${renameValue.trim()}`);
+      closeFile(renameTarget.id);
+      await refreshFiles();
+    } catch (e) { setBuildOutput(o => [...o, `Rename error: ${String(e)}`]); }
+    setRenameTarget(null);
   };
 
   // ── Build / Flash ──
@@ -682,24 +843,124 @@ export function DesktopApp() {
         <button onClick={() => gitCmd(["pull"])} disabled={gitRunning} title="git pull" style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--t2)", fontFamily: "var(--font-ui)", fontSize: 11, cursor: "pointer", opacity: gitRunning ? 0.45 : 1 }}>
           <GitMerge size={11} /> Pull
         </button>
+
+        <div style={{ width: 1, height: 16, background: "var(--b2)" }} />
+
+        {/* Auth button */}
+        {authToken ? (
+          <button
+            onClick={() => { setStoredToken(null); setAuthToken(null); setAuthEmail(null); }}
+            title={`Signed in as ${authEmail ?? "user"} — click to sign out`}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--green)", fontFamily: "var(--font-ui)", fontSize: 11, cursor: "pointer" }}
+          >
+            <User size={11} /> {authEmail?.split("@")[0] ?? "me"}
+            <LogOut size={10} style={{ color: "var(--t4)" }} />
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowLogin(true)}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", border: "1px solid rgba(224,160,32,0.4)", borderRadius: "var(--r2)", background: "var(--amber-lo)", color: "var(--amber)", fontFamily: "var(--font-ui)", fontSize: 11, cursor: "pointer" }}
+          >
+            <LogIn size={11} /> Sign In
+          </button>
+        )}
       </div>
+
+      {/* Auth modal */}
+      {showLogin && (
+        <LoginModal
+          onLogin={(token, email) => { setAuthToken(token); setAuthEmail(email); setShowLogin(false); }}
+          onClose={() => setShowLogin(false)}
+        />
+      )}
 
       {/* ── Main area ── */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
 
         {/* ── File Sidebar ── */}
-        <div style={{ width: sidebarWidth, flexShrink: 0, borderRight: "1px solid var(--b1)", display: "flex", flexDirection: "column", background: "var(--s1)", overflow: "hidden", position: "relative" }}>
-          <div style={{ padding: "5px 12px", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", letterSpacing: "0.1em", borderBottom: "1px solid var(--b1)", textTransform: "uppercase" }}>
-            // Explorer
+        <div
+          style={{ width: sidebarWidth, flexShrink: 0, borderRight: "1px solid var(--b1)", display: "flex", flexDirection: "column", background: "var(--s1)", overflow: "hidden", position: "relative" }}
+          onContextMenu={e => { e.preventDefault(); if (files.length > 0) setCtxMenu({ x: e.clientX, y: e.clientY, node: null }); }}
+        >
+          {/* Explorer header */}
+          <div style={{ padding: "5px 12px", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", letterSpacing: "0.1em", borderBottom: "1px solid var(--b1)", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>// Explorer</span>
+            {rootPath && (
+              <button onClick={newFile} title="New file" style={{ background: "transparent", border: "none", color: "var(--t4)", cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 13, padding: "0 2px", lineHeight: 1 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "var(--amber)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--t4)"; }}>+</button>
+            )}
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
-            {files.length > 0
-              ? <FileTree nodes={files} selectedId={activeFileId ?? undefined} onSelect={openFile} />
-              : <div style={{ padding: 16, textAlign: "center", color: "var(--t4)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
-                  Open a folder to start
-                </div>
-            }
+            {renameTarget ? (
+              /* Inline rename input */
+              <div style={{ padding: "8px 12px" }}>
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenameTarget(null); }}
+                  onBlur={commitRename}
+                  style={{ width: "100%", background: "var(--s3)", border: "1px solid var(--amber)", borderRadius: "var(--r1)", color: "var(--t1)", fontFamily: "var(--font-mono)", fontSize: 11, padding: "3px 6px", outline: "none" }}
+                />
+              </div>
+            ) : files.length > 0 ? (
+              <div onContextMenu={e => { e.preventDefault(); e.stopPropagation(); }}>
+                {files.map(node => (
+                  <div
+                    key={node.id}
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, node }); }}
+                    style={{ display: "contents" }}
+                  >
+                    {/* We render each node as a row so right-click works per-file */}
+                    <div
+                      onClick={() => openFile(node)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, padding: "3px 12px",
+                        cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 11,
+                        color: node.id === activeFileId ? "var(--t1)" : "var(--t2)",
+                        background: node.id === activeFileId ? "var(--s3)" : "transparent",
+                        userSelect: "none",
+                      }}
+                      onMouseEnter={e => { if (node.id !== activeFileId) (e.currentTarget as HTMLElement).style.background = "var(--s2)"; }}
+                      onMouseLeave={e => { if (node.id !== activeFileId) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      <span style={{ color: node.type === "directory" ? "var(--amber)" : "var(--t3)", fontSize: 10 }}>
+                        {node.type === "directory" ? "▸" : "·"}
+                      </span>
+                      {node.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: 16, textAlign: "center", color: "var(--t4)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+                Open a folder to start
+              </div>
+            )}
           </div>
+
+          {/* ── Context menu ── */}
+          {ctxMenu && (
+            <>
+              <div style={{ position: "fixed", inset: 0, zIndex: 49 }} onClick={() => setCtxMenu(null)} />
+              <div style={{ position: "fixed", top: ctxMenu.y, left: ctxMenu.x, zIndex: 50, background: "var(--s3)", border: "1px solid var(--b2)", borderRadius: "var(--r2)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", minWidth: 160, padding: "4px 0", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                {[
+                  { label: "+ New File", action: newFile },
+                  ...(ctxMenu.node?.type === "file" ? [
+                    { label: "✎ Rename", action: () => { startRename(ctxMenu.node!); } },
+                    { label: "✕ Delete", action: () => deleteFile(ctxMenu.node!) },
+                  ] : []),
+                ].map(item => (
+                  <div key={item.label} onClick={item.action}
+                    style={{ padding: "5px 14px", cursor: "pointer", color: item.label.startsWith("✕") ? "var(--red)" : "var(--t2)" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--b2)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >{item.label}</div>
+                ))}
+              </div>
+            </>
+          )}
           {/* Sidebar resize handle */}
           <div
             style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 4, cursor: "col-resize", zIndex: 10 }}
@@ -711,6 +972,7 @@ export function DesktopApp() {
               window.addEventListener("mouseup", up);
             }}
           />
+        </div>
         </div>
 
         {/* ── Editor + bottom ── */}
@@ -873,7 +1135,7 @@ export function DesktopApp() {
             }}
           />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <AgentChatPanel projectPath={rootPath} />
+            <AgentChatPanel projectPath={rootPath} authToken={authToken} />
           </div>
         </div>
       </div>

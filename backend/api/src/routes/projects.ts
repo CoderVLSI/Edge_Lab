@@ -48,11 +48,22 @@ projectsRouter.delete("/:id", (c) => {
   return c.json({ ok: true });
 });
 
+// List all files in a project (metadata only — no content)
 projectsRouter.get("/:id/files", (c) => {
   const files = sqliteDb.getFiles.all({ project_id: c.req.param("id") });
   return c.json(files);
 });
 
+// Get a single file's content  (?path=src/main.cpp)
+projectsRouter.get("/:id/file", (c) => {
+  const filePath = c.req.query("path");
+  if (!filePath) return c.json({ error: "Missing ?path query" }, 400);
+  const file = sqliteDb.getFile.get({ project_id: c.req.param("id"), path: filePath });
+  if (!file) return c.json({ error: "File not found" }, 404);
+  return c.json(file);
+});
+
+// Create or update a file
 projectsRouter.post(
   "/:id/files",
   zValidator("json", z.object({ path: z.string(), content: z.string().default("") })),
@@ -63,6 +74,37 @@ projectsRouter.post(
     return c.json({ id, path, content }, 201);
   }
 );
+
+// Update file content  (?path=src/main.cpp)
+projectsRouter.put(
+  "/:id/file",
+  zValidator("json", z.object({ content: z.string() })),
+  (c) => {
+    const filePath = c.req.query("path");
+    if (!filePath) return c.json({ error: "Missing ?path query" }, 400);
+    const { content } = c.req.valid("json");
+    const id = newId();
+    sqliteDb.upsertFile.run({ id, project_id: c.req.param("id"), path: filePath, content });
+    return c.json({ path: filePath, content });
+  }
+);
+
+// Rename a file  (?path=old.cpp&newPath=new.cpp)
+projectsRouter.patch("/:id/file", (c) => {
+  const oldPath = c.req.query("path");
+  const newPath = c.req.query("newPath");
+  if (!oldPath || !newPath) return c.json({ error: "Missing ?path or ?newPath" }, 400);
+  sqliteDb.renameFile.run({ project_id: c.req.param("id"), old_path: oldPath, new_path: newPath });
+  return c.json({ ok: true, path: newPath });
+});
+
+// Delete a file  (?path=src/main.cpp)
+projectsRouter.delete("/:id/file", (c) => {
+  const filePath = c.req.query("path");
+  if (!filePath) return c.json({ error: "Missing ?path query" }, 400);
+  sqliteDb.deleteFile.run({ project_id: c.req.param("id"), path: filePath });
+  return c.json({ ok: true });
+});
 
 // ── Build & Flash (PlatformIO) ────────────────────────────────────────────────
 

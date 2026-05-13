@@ -115,4 +115,10 @@ export const db = {
     `INSERT INTO project_files (id, project_id, path, content) VALUES (@id, @project_id, @path, @content)
      ON CONFLICT(project_id, path) DO UPDATE SET content = @content, updated_at = datetime('now')`
   ),
+  deleteFile: sqlite.prepare<{ project_id: string; path: string }>(
+    "DELETE FROM project_files WHERE project_id = @project_id AND path = @path"
+  ),
+  renameFile: sqlite.prepare<{ project_id: string; old_path: string; new_path: string }>(
+    "UPDATE project_files SET path = @new_path, updated_at = datetime('now') WHERE project_id = @project_id AND path = @old_path"
+  ),
 };

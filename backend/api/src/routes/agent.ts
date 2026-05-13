@@ -79,6 +79,12 @@ agentRouter.post(
     const ollamaBase    = resolveKey(process.env.OLLAMA_BASE_URL,    c.req.header("X-OLLAMA_BASE_URL"))
                           ?? "http://localhost:11434";
 
+    // Search API keys (per-request overrides — set via in-app Settings)
+    const toolKeys = {
+      serperKey: resolveKey(process.env.SERPER_API_KEY,       c.req.header("X-SERPER_API_KEY")),
+      braveKey:  resolveKey(process.env.BRAVE_SEARCH_API_KEY, c.req.header("X-BRAVE_SEARCH_API_KEY")),
+    };
+
     const body = new ReadableStream({
       async start(controller) {
         const send = (event: object) =>
@@ -89,26 +95,27 @@ agentRouter.post(
 
           if (provider === "anthropic") {
             if (!anthropicKey) throw new Error("No Anthropic API key — add it in Settings (⚙ gear icon).");
-            loop = anthropicAgentLoop(messages, systemPrompt, model, projectId, anthropicKey);
+            loop = anthropicAgentLoop(messages, systemPrompt, model, projectId, anthropicKey, toolKeys);
           } else if (provider === "openai") {
             if (!openaiKey) throw new Error("No OpenAI API key — add it in Settings (⚙ gear icon).");
-            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, openaiKey);
+            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, openaiKey, undefined, undefined, toolKeys);
           } else if (provider === "gemini") {
             // Gemini exposes an OpenAI-compatible endpoint — reuse openaiAgentLoop
             if (!geminiKey) throw new Error("No Gemini API key — add it in Settings (⚙ gear icon).");
             loop = openaiAgentLoop(
               messages, systemPrompt, model, projectId, geminiKey,
-              "https://generativelanguage.googleapis.com/v1beta/openai/"
+              "https://generativelanguage.googleapis.com/v1beta/openai/",
+              undefined, toolKeys
             );
           } else if (provider === "openrouter") {
             if (!openrouterKey) throw new Error("No OpenRouter API key — add it in Settings (⚙ gear icon).");
             loop = openaiAgentLoop(messages, systemPrompt, model, projectId, openrouterKey, "https://openrouter.ai/api/v1", {
               "HTTP-Referer": process.env.WEB_URL ?? "http://localhost:3000",
               "X-Title": "Edge Lab IDE",
-            });
+            }, toolKeys);
           } else {
             // Ollama — no key needed, uses local OpenAI-compatible endpoint
-            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, "ollama", ollamaBase + "/v1");
+            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, "ollama", ollamaBase + "/v1", undefined, toolKeys);
           }
 
           for await (const event of loop) {

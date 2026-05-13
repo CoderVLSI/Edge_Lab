@@ -9,7 +9,7 @@ import { FileTree, type FileTreeNode } from "@edge-lab/ui";
 import { SerialMonitor, BoardSelector, BOARDS, type Board } from "@edge-lab/hardware";
 import {
   FolderOpen, Upload, Play, ChevronRight, Wifi, GitBranch, GitMerge,
-  Bot, Send, Loader2, Plus, Zap, Mic, MicOff, X as XIcon, Image, LogIn, LogOut, User,
+  Bot, Send, Loader2, Plus, Zap, Mic, MicOff, X as XIcon, Image, LogIn, LogOut, User, Settings, Eye, EyeOff, Check,
 } from "lucide-react";
 import * as Y from "yjs";
 import { CodeEditor } from "@edge-lab/editor";
@@ -105,6 +105,274 @@ function LoginModal({ onLogin, onClose }: { onLogin: (token: string, email: stri
   );
 }
 
+// ── Settings Modal ────────────────────────────────────────────────────────────
+
+type SettingsTab = "ai" | "search" | "backend";
+
+interface SettingsData {
+  anthropicKey: string;
+  openaiKey: string;
+  geminiKey: string;
+  openrouterKey: string;
+  ollamaUrl: string;
+  serperKey: string;
+  braveKey: string;
+  backendUrl: string;
+}
+
+function loadSettings(): SettingsData {
+  const g = (k: string) => localStorage.getItem(k) ?? "";
+  return {
+    anthropicKey:  g("anthropic-api-key"),
+    openaiKey:     g("openai-api-key"),
+    geminiKey:     g("gemini-api-key"),
+    openrouterKey: g("openrouter-api-key"),
+    ollamaUrl:     g("ollama-base-url") || "http://localhost:11434",
+    serperKey:     g("serper-api-key"),
+    braveKey:      g("brave-api-key"),
+    backendUrl:    g("backend-url") || "http://localhost:4000",
+  };
+}
+
+function saveSettings(s: SettingsData) {
+  localStorage.setItem("anthropic-api-key",  s.anthropicKey);
+  localStorage.setItem("openai-api-key",     s.openaiKey);
+  localStorage.setItem("gemini-api-key",     s.geminiKey);
+  localStorage.setItem("openrouter-api-key", s.openrouterKey);
+  localStorage.setItem("ollama-base-url",    s.ollamaUrl);
+  localStorage.setItem("serper-api-key",     s.serperKey);
+  localStorage.setItem("brave-api-key",      s.braveKey);
+  localStorage.setItem("backend-url",        s.backendUrl);
+}
+
+function KeyInput({ label, value, onChange, placeholder, hint }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; hint?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <label style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)" }}>{label}</label>
+      <div style={{ display: "flex", gap: 4 }}>
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder ?? "sk-…"}
+          style={{ flex: 1, height: 30, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s3)", color: "var(--t1)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: 11, outline: "none" }}
+          onFocus={e => { e.currentTarget.style.borderColor = "var(--amber)"; }}
+          onBlur={e => { e.currentTarget.style.borderColor = "var(--b2)"; }}
+        />
+        <button
+          type="button" onClick={() => setShow(s => !s)}
+          title={show ? "Hide" : "Show"}
+          style={{ width: 30, height: 30, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--t3)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+        >
+          {show ? <EyeOff size={12} /> : <Eye size={12} />}
+        </button>
+      </div>
+      {hint && <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>{hint}</span>}
+    </div>
+  );
+}
+
+function SettingsModal({ onClose, authToken, authEmail, onLogin, onLogout }: {
+  onClose: () => void;
+  authToken: string | null;
+  authEmail: string | null;
+  onLogin: (token: string, email: string) => void;
+  onLogout: () => void;
+}) {
+  const [tab, setTab] = useState<SettingsTab>("ai");
+  const [data, setData] = useState<SettingsData>(loadSettings);
+  const [saved, setSaved] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPwd, setLoginPwd]     = useState("");
+  const [loginErr, setLoginErr]     = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginMode, setLoginMode] = useState<"login"|"register">("login");
+
+  const set = (k: keyof SettingsData) => (v: string) => setData(d => ({ ...d, [k]: v }));
+
+  const save = () => {
+    saveSettings(data);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const doLogin = async () => {
+    if (!loginEmail.trim() || !loginPwd.trim()) { setLoginErr("Email and password required"); return; }
+    setLoginLoading(true); setLoginErr("");
+    try {
+      const res = await fetch(`${data.backendUrl}/api/auth/${loginMode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail.trim(), password: loginPwd }),
+      });
+      const json = await res.json() as { token?: string; error?: string };
+      if (!res.ok || !json.token) { setLoginErr(json.error ?? "Auth failed"); return; }
+      await setStoredToken(json.token);
+      onLogin(json.token, loginEmail.trim());
+      setLoginErr("");
+    } catch (e) { setLoginErr(`Cannot reach backend: ${String(e)}`); }
+    finally { setLoginLoading(false); }
+  };
+
+  const tabStyle = (t: SettingsTab): React.CSSProperties => ({
+    padding: "5px 14px", border: "none", borderBottom: tab === t ? "2px solid var(--amber)" : "2px solid transparent",
+    background: "transparent", color: tab === t ? "var(--amber)" : "var(--t3)",
+    fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap",
+  });
+
+  const sectionLabel = (label: string) => (
+    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2, marginTop: 8 }}>{label}</div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "var(--s1)", border: "1px solid var(--b2)", borderRadius: "var(--r3)", width: 480, maxHeight: "82vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.6)" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 0", flexShrink: 0 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: "var(--t1)", display: "flex", alignItems: "center", gap: 7 }}>
+            <Settings size={13} style={{ color: "var(--amber)" }} /> Settings
+          </span>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--t4)", cursor: "pointer" }}><XIcon size={14} /></button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", borderBottom: "1px solid var(--b1)", padding: "0 8px", flexShrink: 0, marginTop: 10 }}>
+          <button style={tabStyle("ai")}      onClick={() => setTab("ai")}>🤖 AI Keys</button>
+          <button style={tabStyle("search")}  onClick={() => setTab("search")}>🔍 Search</button>
+          <button style={tabStyle("backend")} onClick={() => setTab("backend")}>🔗 Backend & Auth</button>
+        </div>
+
+        {/* Tab body */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {tab === "ai" && (
+            <>
+              {sectionLabel("Anthropic")}
+              <KeyInput label="API Key" value={data.anthropicKey} onChange={set("anthropicKey")}
+                hint="console.anthropic.com — claude-opus/sonnet/haiku models" />
+
+              {sectionLabel("OpenAI")}
+              <KeyInput label="API Key" value={data.openaiKey} onChange={set("openaiKey")}
+                hint="platform.openai.com — GPT-5.5, o3, etc." />
+
+              {sectionLabel("Google Gemini")}
+              <KeyInput label="API Key" value={data.geminiKey} onChange={set("geminiKey")}
+                placeholder="AIza…" hint="aistudio.google.com/apikey — Gemini 3.1 Pro/Flash" />
+
+              {sectionLabel("OpenRouter (300+ models)")}
+              <KeyInput label="API Key" value={data.openrouterKey} onChange={set("openrouterKey")}
+                placeholder="sk-or-…" hint="openrouter.ai/keys — access Llama 4, Mistral, Qwen, etc." />
+
+              {sectionLabel("Ollama (local)")}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)" }}>Base URL</label>
+                <input value={data.ollamaUrl} onChange={e => set("ollamaUrl")(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  style={{ height: 30, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s3)", color: "var(--t1)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: 11, outline: "none" }}
+                  onFocus={e => { e.currentTarget.style.borderColor = "var(--amber)"; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "var(--b2)"; }}
+                />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>ollama.ai — llama4, qwen3, mistral, etc. No key needed.</span>
+              </div>
+            </>
+          )}
+
+          {tab === "search" && (
+            <>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)", lineHeight: 1.6, padding: "4px 0 8px" }}>
+                The agent uses these keys when calling the <code style={{ color: "var(--amber)" }}>web_search</code> tool.
+                Priority: Serper → Brave → DuckDuckGo (no key, limited).
+              </div>
+
+              {sectionLabel("Serper — Google Results (Recommended)")}
+              <KeyInput label="API Key" value={data.serperKey} onChange={set("serperKey")}
+                hint="serper.dev — 2 500 free searches/month · best quality Google results" />
+
+              {sectionLabel("Brave Search (Fallback)")}
+              <KeyInput label="API Key" value={data.braveKey} onChange={set("braveKey")}
+                hint="api.search.brave.com — privacy-focused, good free tier" />
+
+              <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--s2)", borderRadius: "var(--r2)", border: "1px solid var(--b1)", fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", lineHeight: 1.7 }}>
+                <strong style={{ color: "var(--amber)" }}>No key?</strong> DuckDuckGo instant answers work out-of-the-box —
+                good for quick lookups. For full web results (datasheets, forum posts, Arduino examples) add a Serper key.
+              </div>
+            </>
+          )}
+
+          {tab === "backend" && (
+            <>
+              {sectionLabel("Backend Server URL")}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)" }}>URL</label>
+                <input value={data.backendUrl} onChange={e => set("backendUrl")(e.target.value)}
+                  placeholder="http://localhost:4000"
+                  style={{ height: 30, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s3)", color: "var(--t1)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: 11, outline: "none" }}
+                  onFocus={e => { e.currentTarget.style.borderColor = "var(--amber)"; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "var(--b2)"; }}
+                />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>Local dev: http://localhost:4000 · Cloud: your deployed API URL</span>
+              </div>
+
+              {sectionLabel("Account")}
+              {authToken ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ padding: "10px 12px", background: "var(--green-lo)", border: "1px solid rgba(0,200,100,0.2)", borderRadius: "var(--r2)", display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                    <span style={{ color: "var(--green)" }}>✓</span>
+                    <span style={{ color: "var(--t2)" }}>Signed in as <strong style={{ color: "var(--t1)" }}>{authEmail}</strong></span>
+                  </div>
+                  <button onClick={() => { onLogout(); }}
+                    style={{ height: 32, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--red)", fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer" }}>
+                    <LogOut size={11} style={{ display: "inline", verticalAlign: "middle", marginRight: 6 }} />Sign Out
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {loginErr && <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--red)", padding: "5px 8px", background: "var(--red-lo)", borderRadius: "var(--r1)" }}>{loginErr}</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)" }}>Email</label>
+                    <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()}
+                      style={{ height: 30, border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--s3)", color: "var(--t1)", padding: "0 10px", fontFamily: "var(--font-mono)", fontSize: 11, outline: "none" }}
+                      onFocus={e => { e.currentTarget.style.borderColor = "var(--amber)"; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = "var(--b2)"; }}
+                    />
+                  </div>
+                  <KeyInput label="Password" value={loginPwd} onChange={setLoginPwd} placeholder="password" />
+                  <button onClick={doLogin} disabled={loginLoading}
+                    style={{ height: 32, border: "none", borderRadius: "var(--r2)", background: loginLoading ? "var(--s3)" : "var(--amber)", color: loginLoading ? "var(--t4)" : "#0a0a0a", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, cursor: loginLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    {loginLoading ? <Loader2 size={12} className="animate-spin" /> : <LogIn size={12} />}
+                    {loginLoading ? "Signing in…" : loginMode === "login" ? "Sign In" : "Create Account"}
+                  </button>
+                  <button onClick={() => { setLoginMode(m => m === "login" ? "register" : "login"); setLoginErr(""); }}
+                    style={{ background: "transparent", border: "none", color: "var(--t4)", fontFamily: "var(--font-mono)", fontSize: 10, cursor: "pointer", textAlign: "center" }}>
+                    {loginMode === "login" ? "No account? Register →" : "Have an account? Sign in →"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 20px", borderTop: "1px solid var(--b1)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", flex: 1 }}>
+            Keys saved locally in browser storage — never sent to the cloud.
+          </span>
+          <button onClick={onClose}
+            style={{ height: 30, padding: "0 16px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--t2)", fontFamily: "var(--font-mono)", fontSize: 11, cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={save}
+            style={{ height: 30, padding: "0 18px", border: "none", borderRadius: "var(--r2)", background: saved ? "var(--green)" : "var(--amber)", color: saved ? "#fff" : "#0a0a0a", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "background 0.2s" }}>
+            {saved ? <><Check size={12} /> Saved!</> : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Agent Chat (inline, no import from web) ─────────────────────────────────
 
 const API = "http://localhost:4000";
@@ -156,6 +424,16 @@ interface AgentMsg {
 }
 
 // Web Speech API types
+interface SpeechRecognitionResultList { readonly length: number; item(index: number): SpeechRecognitionResult; [index: number]: SpeechRecognitionResult; }
+interface SpeechRecognitionResult     { readonly isFinal: boolean; readonly length: number; item(index: number): SpeechRecognitionAlternative; [index: number]: SpeechRecognitionAlternative; }
+interface SpeechRecognitionAlternative { readonly transcript: string; readonly confidence: number; }
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean; interimResults: boolean; lang: string;
+  start(): void; stop(): void; abort(): void;
+  onresult: ((this: SpeechRecognition, ev: Event & { resultIndex: number; results: SpeechRecognitionResultList }) => void) | null;
+  onend:    ((this: SpeechRecognition, ev: Event) => void) | null;
+  onerror:  ((this: SpeechRecognition, ev: Event) => void) | null;
+}
 declare global {
   interface Window {
     SpeechRecognition: new () => SpeechRecognition;
@@ -240,7 +518,7 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
 
     let finalTranscript = input;
 
-    recog.onresult = (e) => {
+    recog.onresult = (e: Event & { resultIndex: number; results: SpeechRecognitionResultList }) => {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript;
@@ -276,9 +554,16 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
       const apiKey = localStorage.getItem(`${provider}-api-key`) ?? "";
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-      if (provider === "anthropic" && apiKey) headers["X-ANTHROPIC_API_KEY"]  = apiKey;
-      if (provider === "openai"    && apiKey) headers["X-OPENAI_API_KEY"]     = apiKey;
-      if (provider === "gemini"    && apiKey) headers["X-GEMINI_API_KEY"]     = apiKey;
+      if (provider === "anthropic"  && apiKey) headers["X-ANTHROPIC_API_KEY"]  = apiKey;
+      if (provider === "openai"     && apiKey) headers["X-OPENAI_API_KEY"]     = apiKey;
+      if (provider === "gemini"     && apiKey) headers["X-GEMINI_API_KEY"]     = apiKey;
+      if (provider === "openrouter" && apiKey) headers["X-OPENROUTER_API_KEY"] = apiKey;
+      const ollamaUrl  = localStorage.getItem("ollama-base-url");
+      const serperKey  = localStorage.getItem("serper-api-key");
+      const braveKey   = localStorage.getItem("brave-api-key");
+      if (ollamaUrl)  headers["X-OLLAMA_BASE_URL"]       = ollamaUrl;
+      if (serperKey)  headers["X-SERPER_API_KEY"]        = serperKey;
+      if (braveKey)   headers["X-BRAVE_SEARCH_API_KEY"]  = braveKey;
 
       // Build content blocks (text + images)
       type ContentBlock =
@@ -304,7 +589,8 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
         projectPath,
       };
 
-      const res = await fetch(`${API}/api/agent/run`, {
+      const backendUrl = localStorage.getItem("backend-url") || API;
+      const res = await fetch(`${backendUrl}/api/agent/run`, {
         method: "POST", headers, body: JSON.stringify(body),
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -576,6 +862,7 @@ export function DesktopApp() {
   const [authToken, setAuthToken]     = useState<string | null>(null);
   const [authEmail, setAuthEmail]     = useState<string | null>(null);
   const [showLogin, setShowLogin]     = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   // Per-file Yjs docs: Record<fileId, { doc, text }>
   const yDocsRef = useRef<Record<string, { doc: Y.Doc; text: Y.Text }>>({});
   const [, forceUpdate] = useState(0);
@@ -846,31 +1133,33 @@ export function DesktopApp() {
 
         <div style={{ width: 1, height: 16, background: "var(--b2)" }} />
 
-        {/* Auth button */}
-        {authToken ? (
-          <button
-            onClick={() => { setStoredToken(null); setAuthToken(null); setAuthEmail(null); }}
-            title={`Signed in as ${authEmail ?? "user"} — click to sign out`}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--green)", fontFamily: "var(--font-ui)", fontSize: 11, cursor: "pointer" }}
-          >
-            <User size={11} /> {authEmail?.split("@")[0] ?? "me"}
-            <LogOut size={10} style={{ color: "var(--t4)" }} />
-          </button>
-        ) : (
-          <button
-            onClick={() => setShowLogin(true)}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", border: "1px solid rgba(224,160,32,0.4)", borderRadius: "var(--r2)", background: "var(--amber-lo)", color: "var(--amber)", fontFamily: "var(--font-ui)", fontSize: 11, cursor: "pointer" }}
-          >
-            <LogIn size={11} /> Sign In
-          </button>
+        {/* Auth status pill */}
+        {authToken && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", border: "1px solid rgba(0,200,100,0.25)", borderRadius: "var(--r2)", background: "var(--green-lo)", color: "var(--green)", fontFamily: "var(--font-mono)", fontSize: 10 }}>
+            <User size={10} /> {authEmail?.split("@")[0] ?? "me"}
+          </div>
         )}
+
+        {/* Settings gear */}
+        <button
+          onClick={() => setShowSettings(true)}
+          title="Settings — API keys, search, auth"
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 9px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "transparent", color: "var(--t3)", fontFamily: "var(--font-ui)", fontSize: 11, cursor: "pointer" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "var(--amber)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--t3)"; }}
+        >
+          <Settings size={12} />
+        </button>
       </div>
 
-      {/* Auth modal */}
-      {showLogin && (
-        <LoginModal
-          onLogin={(token, email) => { setAuthToken(token); setAuthEmail(email); setShowLogin(false); }}
-          onClose={() => setShowLogin(false)}
+      {/* Settings modal */}
+      {showSettings && (
+        <SettingsModal
+          authToken={authToken}
+          authEmail={authEmail}
+          onLogin={(token, email) => { setAuthToken(token); setAuthEmail(email); }}
+          onLogout={() => { setStoredToken(null); setAuthToken(null); setAuthEmail(null); }}
+          onClose={() => setShowSettings(false)}
         />
       )}
 
@@ -972,7 +1261,6 @@ export function DesktopApp() {
               window.addEventListener("mouseup", up);
             }}
           />
-        </div>
         </div>
 
         {/* ── Editor + bottom ── */}

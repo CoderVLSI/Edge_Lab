@@ -253,21 +253,28 @@ export const TOOL_DEFS: ToolDef[] = [
   },
 ];
 
+// ── Per-request key overrides (from request headers, override env vars) ──────
+export interface ToolKeys {
+  serperKey?: string;
+  braveKey?: string;
+}
+
 // ── Tool executor ───────────────────────────────────────────────────────────
 export async function executeTool(
   name: string,
   input: Record<string, string>,
-  projectId: string
+  projectId: string,
+  keys?: ToolKeys
 ): Promise<ToolResult> {
   try {
-    const content = await runTool(name, input, projectId);
+    const content = await runTool(name, input, projectId, keys);
     return { type: "tool_result", name, content };
   } catch (e) {
     return { type: "tool_result", name, content: `Error: ${e instanceof Error ? e.message : String(e)}`, isError: true };
   }
 }
 
-async function runTool(name: string, input: Record<string, string>, projectId: string): Promise<string> {
+async function runTool(name: string, input: Record<string, string>, projectId: string, keys?: ToolKeys): Promise<string> {
   const projectDir = getProjectPath(projectId);
 
   switch (name) {
@@ -502,7 +509,7 @@ print(response.decode("utf-8", errors="replace"))
       const searchType = input.type ?? "search";
 
       // ── Tier 1: Serper (Google results, best quality) ───────────────────────
-      const serperKey = process.env.SERPER_API_KEY;
+      const serperKey = keys?.serperKey || process.env.SERPER_API_KEY;
       if (serperKey) {
         const endpoint = searchType === "news"
           ? "https://google.serper.dev/news"
@@ -545,7 +552,7 @@ print(response.decode("utf-8", errors="replace"))
       }
 
       // ── Tier 2: Brave Search API ────────────────────────────────────────────
-      const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+      const braveKey = keys?.braveKey || process.env.BRAVE_SEARCH_API_KEY;
       if (braveKey) {
         const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${numResults}`;
         const res = await fetch(url, {

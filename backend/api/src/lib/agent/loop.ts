@@ -5,7 +5,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { TOOL_DEFS, executeTool } from "./tools";
+import { TOOL_DEFS, executeTool, type ToolKeys } from "./tools";
 import type { ChatMessage, ImagePart } from "../providers/types";
 
 /** Convert a ChatMessage to Anthropic MessageParam, supporting vision */
@@ -86,7 +86,8 @@ export async function* anthropicAgentLoop(
   systemPrompt: string,
   model: string,
   projectId: string,
-  apiKey?: string
+  apiKey?: string,
+  keys?: ToolKeys
 ): AsyncGenerator<AgentEvent> {
   const resolvedKey = apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) {
@@ -130,7 +131,7 @@ export async function* anthropicAgentLoop(
         const input = block.input as Record<string, string>;
         yield { type: "tool_start", id: block.id, name: block.name, input };
 
-        const result = await executeTool(block.name, input, projectId);
+        const result = await executeTool(block.name, input, projectId, keys);
         yield { type: "tool_result", id: block.id, name: block.name, content: result.content, isError: !!result.isError };
 
         toolResults.push({
@@ -164,7 +165,8 @@ export async function* openaiAgentLoop(
   projectId: string,
   apiKey: string,
   baseURL?: string,
-  extraHeaders?: Record<string, string>
+  extraHeaders?: Record<string, string>,
+  keys?: ToolKeys
 ): AsyncGenerator<AgentEvent> {
   const client = new OpenAI({ apiKey, baseURL, defaultHeaders: extraHeaders });
 
@@ -221,7 +223,7 @@ export async function* openaiAgentLoop(
       const input = JSON.parse(call.function.arguments || "{}") as Record<string, string>;
       yield { type: "tool_start", id: call.id, name: call.function.name, input };
 
-      const result = await executeTool(call.function.name, input, projectId);
+      const result = await executeTool(call.function.name, input, projectId, keys);
       yield { type: "tool_result", id: call.id, name: call.function.name, content: result.content, isError: !!result.isError };
 
       toolResults.push({

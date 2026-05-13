@@ -213,6 +213,31 @@ export const TOOL_DEFS: ToolDef[] = [
       required: ["file"],
     },
   },
+  {
+    name: "web_search",
+    description: "Search the web for documentation, error messages, datasheets, Arduino libraries, or anything else. Returns a list of titles + snippets + URLs. Use this when you need external information not in the codebase.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query, e.g. 'ESP32 SPI OLED SSD1306 Arduino example'" },
+        num_results: { type: "string", description: "Number of results to return (default: 5, max: 10)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "todo",
+    description: "Manage a task list for the current session. Use this to plan multi-step work, track progress, and stay organised. Call with action='set' to replace the full list, 'add' to append a task, 'complete' to mark done, 'list' to read current tasks.",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: { type: "string", description: "One of: list, add, complete, set, clear", enum: ["list", "add", "complete", "set", "clear"] },
+        task:   { type: "string", description: "Task description (for add/complete actions)" },
+        tasks:  { type: "string", description: "JSON array of task strings (for set action), e.g. '[\"Read main.cpp\",\"Fix bug\",\"Flash board\"]'" },
+      },
+      required: ["action"],
+    },
+  },
 ];
 
 // ── Tool executor ───────────────────────────────────────────────────────────
@@ -457,9 +482,155 @@ print(response.decode("utf-8", errors="replace"))
       }
     }
 
+    case "web_search": {
+      const query = input.query?.trim();
+      if (!query) return "No search query provided.";
+      const numResults = Math.min(parseInt(input.num_results ?? "5", 10), 10);
+
+      // ── Try Brave Search API first (best results) ───────────────────────────
+      const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+      if (braveKey) {
+        const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${numResults}`;
+        const res = await fetch(url, {
+          headers: {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": braveKey,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json() as {
+            web?: { results?: Array<{ title: string; description?: string; url: string }> };
+          };
+          const results = data.web?.results ?? [];
+          if (results.length) {
+            const lines = results.slice(0, numResults).map((r, i) =>
+              `[${i + 1}] ${r.title}\n    ${r.description ?? "(no snippet)"}\n    🔗 ${r.url}`
+            );
+            return `Web search results for "${query}":\n\n${lines.join("\n\n")}`;
+          }
+        }
+      }
+
+      // ── Fallback: DuckDuckGo Instant Answer API (no key needed) ────────────
+      const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      const ddgRes = await fetch(ddgUrl, {
+        headers: { "User-Agent": "Edge-Lab-IDE/1.0" },
+      });
+      if (!ddgRes.ok) throw new Error(`DuckDuckGo API error: ${ddgRes.status}`);
+      const ddg = await ddgRes.json() as {
+        AbstractText?: string;
+        AbstractURL?: string;
+        AbstractSource?: string;
+        RelatedTopics?: Array<{ Text?: string; FirstURL?: string; Topics?: Array<{ Text?: string; FirstURL?: string }> }>;
+        Answer?: string;
+        AnswerType?: string;
+      };
+
+      const sections: string[] = [];
+
+      // Instant answer (calculator, conversions, etc.)
+      if (ddg.Answer) {
+        sections.push(`⚡ Instant Answer: ${ddg.Answer}`);
+      }
+
+      // Abstract (Wikipedia summary)
+      if (ddg.AbstractText) {
+        sections.push(`📖 ${ddg.AbstractSource}: ${ddg.AbstractText.slice(0, 500)}\n   🔗 ${ddg.AbstractURL}`);
+      }
+
+      // Related topics
+      const topics: string[] = [];
+      for (const t of ddg.RelatedTopics ?? []) {
+        if (topics.length >= numResults) break;
+        if (t.Text && t.FirstURL) {
+          topics.push(`• ${t.Text.slice(0, 200)}\n  🔗 ${t.FirstURL}`);
+        }
+        // Some topics are grouped (have a Topics array)
+        for (const sub of t.Topics ?? []) {
+          if (topics.length >= numResults) break;
+          if (sub.Text && sub.FirstURL) {
+            topics.push(`• ${sub.Text.slice(0, 200)}\n  🔗 ${sub.FirstURL}`);
+          }
+        }
+      }
+      if (topics.length) {
+        sections.push(`Related results:\n${topics.join("\n\n")}`);
+      }
+
+      if (!sections.length) {
+        return `No results found for "${query}". Try a more specific query, or set BRAVE_SEARCH_API_KEY in .env for full web search.`;
+      }
+
+      return `Web search results for "${query}":\n\n${sections.join("\n\n---\n\n")}\n\n💡 Tip: set BRAVE_SEARCH_API_KEY in .env for richer web results.`;
+    }
+
+    case "todo": {
+      // Per-project in-memory todo store (lives for server process lifetime)
+      const list = getTodoList(projectId);
+      const action = input.action;
+
+      switch (action) {
+        case "list": {
+          if (!list.length) return "📋 Todo list is empty. Use action='add' or action='set' to add tasks.";
+          const lines = list.map((t, i) => `${t.done ? "✅" : "⬜"} ${i + 1}. ${t.task}`);
+          const done = list.filter((t) => t.done).length;
+          return `📋 Todo list (${done}/${list.length} done):\n${lines.join("\n")}`;
+        }
+        case "add": {
+          if (!input.task) return "Error: 'task' is required for action='add'";
+          list.push({ task: input.task, done: false });
+          setTodoList(projectId, list);
+          return `✅ Added task ${list.length}: "${input.task}"\n\nCurrent list:\n${list.map((t, i) => `${t.done ? "✅" : "⬜"} ${i + 1}. ${t.task}`).join("\n")}`;
+        }
+        case "complete": {
+          if (!input.task) return "Error: 'task' is required for action='complete' (provide the task name or number)";
+          // Match by number or substring
+          const idx = /^\d+$/.test(input.task.trim())
+            ? parseInt(input.task.trim(), 10) - 1
+            : list.findIndex((t) => t.task.toLowerCase().includes(input.task.toLowerCase()));
+          if (idx < 0 || idx >= list.length) return `Task not found: "${input.task}". Use action='list' to see current tasks.`;
+          list[idx].done = true;
+          setTodoList(projectId, list);
+          const done = list.filter((t) => t.done).length;
+          return `✅ Marked done: "${list[idx].task}" (${done}/${list.length} complete)\n\n${list.map((t, i) => `${t.done ? "✅" : "⬜"} ${i + 1}. ${t.task}`).join("\n")}`;
+        }
+        case "set": {
+          if (!input.tasks) return "Error: 'tasks' is required for action='set' (JSON array of strings)";
+          let taskNames: string[];
+          try {
+            taskNames = JSON.parse(input.tasks);
+            if (!Array.isArray(taskNames)) throw new Error("Not an array");
+          } catch {
+            return `Error: 'tasks' must be a JSON array, e.g. '["Task 1", "Task 2"]'. Got: ${input.tasks}`;
+          }
+          const newList = taskNames.map((t) => ({ task: String(t), done: false }));
+          setTodoList(projectId, newList);
+          return `📋 Todo list set (${newList.length} tasks):\n${newList.map((t, i) => `⬜ ${i + 1}. ${t.task}`).join("\n")}`;
+        }
+        case "clear": {
+          setTodoList(projectId, []);
+          return "🗑️ Todo list cleared.";
+        }
+        default:
+          return `Unknown action: "${action}". Use: list, add, complete, set, or clear.`;
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
+}
+
+// ── In-memory todo store (per project, per server process) ──────────────────
+interface TodoItem { task: string; done: boolean; }
+const todoStore = new Map<string, TodoItem[]>();
+function getTodoList(projectId: string): TodoItem[] {
+  if (!todoStore.has(projectId)) todoStore.set(projectId, []);
+  return todoStore.get(projectId)!;
+}
+function setTodoList(projectId: string, list: TodoItem[]): void {
+  todoStore.set(projectId, list);
 }
 
 /**

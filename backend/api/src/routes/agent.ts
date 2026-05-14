@@ -79,10 +79,17 @@ agentRouter.post(
     const ollamaBase    = resolveKey(process.env.OLLAMA_BASE_URL,    c.req.header("X-OLLAMA_BASE_URL"))
                           ?? "http://localhost:11434";
 
-    // Search API keys (per-request overrides — set via in-app Settings)
+    // Tool keys — search keys + all provider keys so sub-agents can inherit
     const toolKeys = {
-      serperKey: resolveKey(process.env.SERPER_API_KEY,       c.req.header("X-SERPER_API_KEY")),
-      braveKey:  resolveKey(process.env.BRAVE_SEARCH_API_KEY, c.req.header("X-BRAVE_SEARCH_API_KEY")),
+      serperKey:    resolveKey(process.env.SERPER_API_KEY,       c.req.header("X-SERPER_API_KEY")),
+      braveKey:     resolveKey(process.env.BRAVE_SEARCH_API_KEY, c.req.header("X-BRAVE_SEARCH_API_KEY")),
+      anthropicKey: anthropicKey,
+      openaiKey:    openaiKey,
+      geminiKey:    geminiKey,
+      openrouterKey:openrouterKey,
+      ollamaBase:   ollamaBase,
+      provider,
+      model,
     };
 
     const body = new ReadableStream({

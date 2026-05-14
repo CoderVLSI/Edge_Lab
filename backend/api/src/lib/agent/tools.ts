@@ -239,6 +239,18 @@ export const TOOL_DEFS: ToolDef[] = [
     },
   },
   {
+    name: "spawn_agent",
+    description: "Spawn a focused specialist sub-agent to handle a specific task. Use this to parallelise work or delegate expertise: 'web' for research/docs/datasheets, 'serial' for hardware debugging, 'pcb' for KiCad schematic/PCB work, 'code' for firmware writing and building. The sub-agent runs its own full tool loop and returns a detailed summary. You can spawn multiple agents for different subtasks.",
+    input_schema: {
+      type: "object",
+      properties: {
+        specialist: { type: "string", description: "Agent type: 'web' (research), 'serial' (hardware/serial debug), 'pcb' (KiCad PCB/schematic), 'code' (firmware), 'general'", enum: ["web", "serial", "pcb", "code", "general"] },
+        task: { type: "string", description: "Clear task description for the sub-agent, e.g. 'Search for ESP32 SPI OLED wiring and return pin connections' or 'Read serial output for 5s and diagnose boot errors'" },
+      },
+      required: ["specialist", "task"],
+    },
+  },
+  {
     name: "todo",
     description: "Manage a task list for the current session. Use this to plan multi-step work, track progress, and stay organised. Call with action='set' to replace the full list, 'add' to append a task, 'complete' to mark done, 'list' to read current tasks.",
     input_schema: {
@@ -257,7 +269,52 @@ export const TOOL_DEFS: ToolDef[] = [
 export interface ToolKeys {
   serperKey?: string;
   braveKey?: string;
+  // Provider keys — used by sub-agents to spawn their own loops
+  anthropicKey?: string;
+  openaiKey?: string;
+  geminiKey?: string;
+  openrouterKey?: string;
+  ollamaBase?: string;
+  provider?: string;   // active provider for sub-agents to inherit
+  model?: string;      // active model for sub-agents to inherit
 }
+
+// ── Specialist sub-agent tool sets ──────────────────────────────────────────
+const SPECIALIST_TOOLS: Record<string, string[]> = {
+  web:     ["web_search", "web_fetch", "todo"],
+  serial:  ["read_serial", "serial_send", "run_bash", "read_file", "list_files"],
+  pcb:     ["read_file", "write_file", "edit_file", "list_files", "search_files",
+             "kicad_drc", "kicad_export_netlist", "kicad_export_svg"],
+  code:    ["read_file", "write_file", "edit_file", "list_files", "search_files",
+             "search_codebase", "run_bash", "flash_board", "git_status", "git_commit"],
+  general: ["read_file", "write_file", "edit_file", "list_files", "search_files",
+             "run_bash", "web_search", "web_fetch", "todo"],
+};
+
+const SPECIALIST_PROMPTS: Record<string, string> = {
+  web: `You are a web research specialist agent inside Edge Lab IDE.
+Your job: find information on the web, read documentation, datasheets, and forum answers, then return clear structured findings.
+Workflow: 1) web_search to find relevant URLs  2) web_fetch to read the best page  3) summarize the key facts concisely.
+Do not ask questions — complete the research task and return your findings.`,
+
+  serial: `You are a hardware/serial debugging specialist agent inside Edge Lab IDE.
+Your job: communicate with microcontroller boards over serial, capture output, send commands, and diagnose issues.
+Workflow: 1) read_serial to capture live output  2) send commands with serial_send if needed  3) run_bash for pio device list to check ports.
+Report what you observed precisely — include raw serial output and your diagnosis.`,
+
+  pcb: `You are a PCB and schematic design specialist agent inside Edge Lab IDE.
+Your job: work with KiCad files (.kicad_sch, .kicad_pcb in S-expression format), run DRC checks, export netlists, and make targeted edits.
+Workflow: 1) list_files to find KiCad files  2) read_file to inspect them  3) edit_file for targeted changes  4) kicad_drc to validate.
+KiCad S-expression files are plain text — be precise with parentheses, malformed files won't render.`,
+
+  code: `You are a firmware/code specialist agent inside Edge Lab IDE.
+Your job: write, read, and edit embedded C/C++ code for Arduino, ESP32, and other microcontrollers. Build with PlatformIO.
+Workflow: 1) read_file to understand existing code  2) edit_file for targeted changes (prefer over write_file)  3) run_bash 'pio run' to verify it compiles.
+Always read before editing. After writing code, build to verify.`,
+
+  general: `You are a general-purpose specialist agent inside Edge Lab IDE.
+Complete the assigned task using the available tools. Be thorough and return a clear summary of what you did.`,
+};
 
 // ── Tool executor ───────────────────────────────────────────────────────────
 export async function executeTool(
@@ -500,6 +557,62 @@ print(response.decode("utf-8", errors="replace"))
         }
         throw e;
       }
+    }
+
+    case "spawn_agent": {
+      const specialist = (input.specialist ?? "general") as keyof typeof SPECIALIST_TOOLS;
+      const task = input.task?.trim();
+      if (!task) return "Error: 'task' is required for spawn_agent.";
+
+      // Resolve which API key + loop to use (inherit from parent agent)
+      const provider    = keys?.provider ?? "anthropic";
+      const model       = keys?.model ?? "claude-haiku-4-5"; // use fast model for sub-agents
+      const allowedNames = SPECIALIST_TOOLS[specialist] ?? SPECIALIST_TOOLS.general;
+      const systemPrompt = SPECIALIST_PROMPTS[specialist] ?? SPECIALIST_PROMPTS.general;
+
+      // Lazy import avoids circular dependency (tools ↔ loop)
+      const { anthropicAgentLoop, openaiAgentLoop } = await import("./loop");
+
+      // Filter TOOL_DEFS to the specialist's allowed tools (exclude spawn_agent to prevent recursion)
+      const subDefs = TOOL_DEFS.filter(t => allowedNames.includes(t.name));
+
+      const messages = [{ role: "user" as const, content: task, images: undefined }];
+
+      // Build the sub-agent generator
+      let loop: AsyncIterable<{ type: string; text?: string; name?: string; content?: string; message?: string }>;
+
+      if (provider === "anthropic") {
+        const apiKey = keys?.anthropicKey ?? process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return "❌ Sub-agent needs Anthropic API key. Add it in Settings → AI Keys.";
+        loop = anthropicAgentLoop(messages, systemPrompt, model, projectId, apiKey, keys, subDefs, 8);
+      } else if (provider === "openai") {
+        const apiKey = keys?.openaiKey ?? process.env.OPENAI_API_KEY;
+        if (!apiKey) return "❌ Sub-agent needs OpenAI API key. Add it in Settings → AI Keys.";
+        loop = openaiAgentLoop(messages, systemPrompt, model, projectId, apiKey, undefined, undefined, keys, subDefs, 8);
+      } else if (provider === "gemini") {
+        const apiKey = keys?.geminiKey ?? process.env.GEMINI_API_KEY;
+        if (!apiKey) return "❌ Sub-agent needs Gemini API key. Add it in Settings → AI Keys.";
+        loop = openaiAgentLoop(messages, systemPrompt, model, projectId, apiKey,
+          "https://generativelanguage.googleapis.com/v1beta/openai/", undefined, keys, subDefs, 8);
+      } else {
+        // Ollama — no key needed
+        const base = keys?.ollamaBase ?? process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+        loop = openaiAgentLoop(messages, systemPrompt, model, projectId, "ollama", base + "/v1", undefined, keys, subDefs, 8);
+      }
+
+      // Consume the generator and collect output
+      const parts: string[] = [
+        `╔══ ${specialist.toUpperCase()} AGENT ══╗`,
+        `Task: ${task}`,
+        `─────────────────────────────`,
+      ];
+      for await (const event of loop) {
+        if (event.type === "text" && event.text)         parts.push(event.text);
+        if (event.type === "tool_result" && event.name)  parts.push(`[${event.name}] → ${(event.content ?? "").slice(0, 300)}`);
+        if (event.type === "error" && event.message)     parts.push(`⚠ ${event.message}`);
+      }
+      parts.push(`╚══ END ${specialist.toUpperCase()} AGENT ══╝`);
+      return parts.join("\n");
     }
 
     case "web_search": {

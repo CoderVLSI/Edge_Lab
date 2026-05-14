@@ -5,7 +5,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { TOOL_DEFS, executeTool, type ToolKeys } from "./tools";
+import { TOOL_DEFS, executeTool, type ToolKeys, type ToolDef } from "./tools";
 import type { ChatMessage, ImagePart } from "../providers/types";
 
 /** Convert a ChatMessage to Anthropic MessageParam, supporting vision */
@@ -87,7 +87,9 @@ export async function* anthropicAgentLoop(
   model: string,
   projectId: string,
   apiKey?: string,
-  keys?: ToolKeys
+  keys?: ToolKeys,
+  toolDefs?: ToolDef[],
+  maxIter?: number
 ): AsyncGenerator<AgentEvent> {
   const resolvedKey = apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!resolvedKey) {
@@ -96,18 +98,20 @@ export async function* anthropicAgentLoop(
     return;
   }
   const client = new Anthropic({ apiKey: resolvedKey });
+  const activeDefs = toolDefs ?? TOOL_DEFS;
+  const iterations = maxIter ?? MAX_ITERATIONS;
 
   // Convert to Anthropic message format (with optional vision)
   let history: Anthropic.MessageParam[] = messages.map(toAnthropicMsg);
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < iterations; i++) {
     let response: Anthropic.Message;
     try {
       response = await withRetry(() => client.messages.create({
         model,
         max_tokens: 4096,
         system: systemPrompt,
-        tools: TOOL_DEFS as Anthropic.Tool[],
+        tools: activeDefs as Anthropic.Tool[],
         messages: history,
       }));
     } catch (err) {
@@ -166,12 +170,16 @@ export async function* openaiAgentLoop(
   apiKey: string,
   baseURL?: string,
   extraHeaders?: Record<string, string>,
-  keys?: ToolKeys
+  keys?: ToolKeys,
+  toolDefs?: ToolDef[],
+  maxIter?: number
 ): AsyncGenerator<AgentEvent> {
   const client = new OpenAI({ apiKey, baseURL, defaultHeaders: extraHeaders });
+  const activeDefs = toolDefs ?? TOOL_DEFS;
+  const iterations = maxIter ?? MAX_ITERATIONS;
 
-  // Convert TOOL_DEFS to OpenAI function format
-  const tools: OpenAI.Chat.ChatCompletionTool[] = TOOL_DEFS.map((t) => ({
+  // Convert tool defs to OpenAI function format
+  const tools: OpenAI.Chat.ChatCompletionTool[] = activeDefs.map((t) => ({
     type: "function" as const,
     function: {
       name: t.name,
@@ -191,7 +199,7 @@ export async function* openaiAgentLoop(
     return;
   }
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < iterations; i++) {
     let response: OpenAI.Chat.ChatCompletion;
     try {
       response = await withRetry(() => client.chat.completions.create({

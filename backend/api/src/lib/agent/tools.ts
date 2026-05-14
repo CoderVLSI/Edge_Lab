@@ -13,10 +13,9 @@ import { searchHybrid, searchText, searchSemantic, getChunkCount } from "../inde
 const execAsync = promisify(exec);
 
 // ── Sandboxing ──────────────────────────────────────────────────────────────
-function safePath(projectId: string, filePath: string): string {
-  const base = getProjectPath(projectId);
+function safePath(projectId: string, filePath: string, keys?: ToolKeys): string {
+  const base = keys?.projectDir || getProjectPath(projectId);
   const full = resolve(base, filePath);
-  // Prevent path traversal outside the project directory
   if (!full.startsWith(base)) throw new Error(`Path traversal blocked: ${filePath}`);
   return full;
 }
@@ -277,6 +276,8 @@ export interface ToolKeys {
   ollamaBase?: string;
   provider?: string;   // active provider for sub-agents to inherit
   model?: string;      // active model for sub-agents to inherit
+  // Desktop: override project dir with a local filesystem path
+  projectDir?: string;
 }
 
 // ── Specialist sub-agent tool sets ──────────────────────────────────────────
@@ -332,7 +333,10 @@ export async function executeTool(
 }
 
 async function runTool(name: string, input: Record<string, string>, projectId: string, keys?: ToolKeys): Promise<string> {
-  const projectDir = getProjectPath(projectId);
+  // Desktop app passes a local filesystem path via keys.projectDir; cloud uses projectId
+  const projectDir = keys?.projectDir || getProjectPath(projectId);
+  // Local alias that captures keys so every safePath call is sandboxed correctly
+  const safeP = (filePath: string): string => safePath(projectId, filePath, keys);
 
   switch (name) {
     case "search_codebase": {
@@ -359,7 +363,7 @@ async function runTool(name: string, input: Record<string, string>, projectId: s
     }
 
     case "read_file": {
-      const path = safePath(projectId, input.path);
+      const path = safeP(input.path);
       const content = await readFile(path, "utf-8");
       return content.length > 20000
         ? content.slice(0, 20000) + `\n\n[truncated — ${content.length} total chars]`
@@ -367,14 +371,14 @@ async function runTool(name: string, input: Record<string, string>, projectId: s
     }
 
     case "write_file": {
-      const path = safePath(projectId, input.path);
+      const path = safeP(input.path);
       mkdirSync(dirname(path), { recursive: true });
       await writeFile(path, input.content, "utf-8");
       return `Written ${input.content.split("\n").length} lines to ${input.path}`;
     }
 
     case "edit_file": {
-      const path = safePath(projectId, input.path);
+      const path = safeP(input.path);
       const original = await readFile(path, "utf-8");
       if (!original.includes(input.old_string)) {
         throw new Error(`old_string not found in ${input.path}. Read the file first and use exact text.`);
@@ -385,12 +389,12 @@ async function runTool(name: string, input: Record<string, string>, projectId: s
     }
 
     case "list_files": {
-      const dir = input.dir ? safePath(projectId, input.dir) : projectDir;
+      const dir = input.dir ? safeP(input.dir) : projectDir;
       return await listDirTree(dir, dir, 0, 3);
     }
 
     case "search_files": {
-      const dir = input.dir ? safePath(projectId, input.dir) : projectDir;
+      const dir = input.dir ? safeP(input.dir) : projectDir;
       const fileGlob = input.file_pattern ?? "*";
       const { stdout } = await execAsync(
         `grep -rn --include="${fileGlob}" -E "${input.pattern.replace(/"/g, '\\"')}" .`,
@@ -494,8 +498,8 @@ print(response.decode("utf-8", errors="replace"))
 
     case "kicad_drc": {
       const pcbFile = input.pcb_file ?? "board.kicad_pcb";
-      const pcbPath = safePath(projectId, pcbFile);
-      const outputPath = safePath(projectId, "drc_report.json");
+      const pcbPath = safeP(pcbFile);
+      const outputPath = safeP("drc_report.json");
       try {
         const { stdout, stderr } = await execAsync(
           `kicad-cli pcb drc --output "${outputPath}" --format json "${pcbPath}"`,
@@ -521,8 +525,8 @@ print(response.decode("utf-8", errors="replace"))
     case "kicad_export_netlist": {
       const schFile = input.sch_file ?? "schematic.kicad_sch";
       const fmt = input.format ?? "kicadxml";
-      const schPath = safePath(projectId, schFile);
-      const outPath = safePath(projectId, `netlist.${fmt === "spice" ? "net" : "xml"}`);
+      const schPath = safeP(schFile);
+      const outPath = safeP(`netlist.${fmt === "spice" ? "net" : "xml"}`);
       try {
         await execAsync(
           `kicad-cli sch export netlist --format ${fmt} --output "${outPath}" "${schPath}"`,
@@ -540,9 +544,9 @@ print(response.decode("utf-8", errors="replace"))
     }
 
     case "kicad_export_svg": {
-      const filePath = safePath(projectId, input.file);
+      const filePath = safeP(input.file);
       const isSch = input.file.endsWith(".kicad_sch");
-      const outDir = safePath(projectId, "exports");
+      const outDir = safeP("exports");
       mkdirSync(outDir, { recursive: true });
       try {
         const cmd = isSch

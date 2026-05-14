@@ -85,7 +85,8 @@ agentRouter.post(
     z.object({
       provider: z.string().default("anthropic"),
       model: z.string().default("claude-sonnet-4-6"),
-      projectId: z.string(),
+      projectId: z.string().optional().default(""),
+      projectPath: z.string().optional(), // desktop: local filesystem path
       messages: z.array(z.object({
         role: z.enum(["user", "assistant"]),
         content: z.string(),
@@ -102,7 +103,7 @@ agentRouter.post(
     })
   ),
   async (c) => {
-    const { provider, model, projectId, messages, boardType, fileContext, mode, chatMode } = c.req.valid("json");
+    const { provider, model, projectId, projectPath, messages, boardType, fileContext, mode, chatMode } = c.req.valid("json");
 
     // Pick system prompt + allowed tools based on chat mode
     const systemPrompt = chatMode === "ask"
@@ -126,7 +127,7 @@ agentRouter.post(
                           ?? "http://localhost:11434";
 
     // Tool keys — search keys + all provider keys so sub-agents can inherit
-    const toolKeys = {
+    const toolKeys: import("../lib/agent/tools").ToolKeys = {
       serperKey:    resolveKey(process.env.SERPER_API_KEY,       c.req.header("X-SERPER_API_KEY")),
       braveKey:     resolveKey(process.env.BRAVE_SEARCH_API_KEY, c.req.header("X-BRAVE_SEARCH_API_KEY")),
       anthropicKey: anthropicKey,
@@ -136,6 +137,8 @@ agentRouter.post(
       ollamaBase:   ollamaBase,
       provider,
       model,
+      // Desktop: use the local filesystem path directly instead of getProjectPath(projectId)
+      projectDir: projectPath || undefined,
     };
 
     const body = new ReadableStream({

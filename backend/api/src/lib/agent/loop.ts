@@ -111,7 +111,7 @@ export async function* anthropicAgentLoop(
         model,
         max_tokens: 4096,
         system: systemPrompt,
-        tools: activeDefs as Anthropic.Tool[],
+        ...(activeDefs.length > 0 ? { tools: activeDefs as Anthropic.Tool[] } : {}),
         messages: history,
       }));
     } catch (err) {
@@ -154,8 +154,8 @@ export async function* anthropicAgentLoop(
       history.push({ role: "user", content: toolResults });
     }
 
-    // Stop if no more tool calls
-    if (response.stop_reason === "end_turn" || toolResults.length === 0) break;
+    // Stop if no tools available or no more tool calls
+    if (activeDefs.length === 0 || response.stop_reason === "end_turn" || toolResults.length === 0) break;
   }
 
   yield { type: "done" };
@@ -204,8 +204,7 @@ export async function* openaiAgentLoop(
     try {
       response = await withRetry(() => client.chat.completions.create({
         model,
-        tools,
-        tool_choice: "auto",
+        ...(tools.length > 0 ? { tools, tool_choice: "auto" as const } : {}),
         messages: history,
       }));
     } catch (err) {
@@ -223,7 +222,7 @@ export async function* openaiAgentLoop(
       yield { type: "text", text: msg.content };
     }
 
-    if (!msg.tool_calls?.length) break;
+    if (!tools.length || !msg.tool_calls?.length) break;
 
     const toolResults: OpenAI.Chat.ChatCompletionToolMessageParam[] = [];
 

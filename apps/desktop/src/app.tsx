@@ -449,6 +449,7 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
   const [model, setModel]             = useState(DEFAULT_MODEL.anthropic);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [listening, setListening]     = useState(false);
+  const [chatMode, setChatMode]       = useState<"ask" | "plan" | "code">("code");
   const scrollRef  = useRef<HTMLDivElement>(null);
   const inputRef   = useRef<HTMLTextAreaElement>(null);
   const fileRef    = useRef<HTMLInputElement>(null);
@@ -587,6 +588,7 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
         provider,
         model,
         projectPath,
+        chatMode,
       };
 
       const backendUrl = localStorage.getItem("backend-url") || API;
@@ -691,17 +693,33 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "10px", display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
         {messages.length === 0 ? (
           <div style={{ padding: "10px", border: "1px solid var(--b2)", borderRadius: "var(--r2)", background: "var(--bg)" }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)", marginBottom: 2 }}>
-              Edit code · run builds · explain errors
-            </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>
-              Attach an image • paste a circuit photo • dictate with mic
-            </div>
-            <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
-              {["bash", "files", "git", "pio", "serial", "search", "fetch", "todo"].map(t => (
-                <span key={t} style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--amber)", border: "1px solid rgba(224,160,32,0.25)", borderRadius: "var(--r1)", padding: "1px 5px", background: "var(--amber-lo)" }}>{t}</span>
-              ))}
-            </div>
+            {chatMode === "ask" && (<>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)", marginBottom: 2 }}>💬 Ask — conversational AI</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>Explain code · debug ideas · answer questions · no tools run</div>
+              <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                {["concepts", "errors", "pinouts", "datasheets"].map(t => (
+                  <span key={t} style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--amber)", border: "1px solid rgba(224,160,32,0.25)", borderRadius: "var(--r1)", padding: "1px 5px", background: "var(--amber-lo)" }}>{t}</span>
+                ))}
+              </div>
+            </>)}
+            {chatMode === "plan" && (<>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)", marginBottom: 2 }}>🗺 Plan — research & design</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>Web research · read project files · build a todo plan · save PLAN.md</div>
+              <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                {["web_search", "web_fetch", "todo", "read_file", "list_files"].map(t => (
+                  <span key={t} style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--amber)", border: "1px solid rgba(224,160,32,0.25)", borderRadius: "var(--r1)", padding: "1px 5px", background: "var(--amber-lo)" }}>{t}</span>
+                ))}
+              </div>
+            </>)}
+            {chatMode === "code" && (<>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--t3)", marginBottom: 2 }}>⚡ Code — full agent, all tools</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)" }}>Write · build · flash · debug serial · spawn sub-agents · git</div>
+              <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                {["bash", "files", "git", "pio", "serial", "search", "fetch", "spawn"].map(t => (
+                  <span key={t} style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--amber)", border: "1px solid rgba(224,160,32,0.25)", borderRadius: "var(--r1)", padding: "1px 5px", background: "var(--amber-lo)" }}>{t}</span>
+                ))}
+              </div>
+            </>)}
             {projectPath && (
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--t4)", marginTop: 4, borderTop: "1px solid var(--b1)", paddingTop: 4 }}>
                 cwd: {projectPath.split(/[/\\]/).slice(-2).join("/")}
@@ -764,6 +782,37 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
           onChange={e => addImages(e.target.files)}
         />
 
+        {/* ── Mode switcher ── */}
+        <div style={{ display: "flex", gap: 3, padding: "2px 0" }}>
+          {([
+            { id: "ask",  label: "Ask",  desc: "Chat — no tools",            icon: "💬" },
+            { id: "plan", label: "Plan", desc: "Research + todo — no builds", icon: "🗺" },
+            { id: "code", label: "Code", desc: "Full agent — all tools",      icon: "⚡" },
+          ] as const).map(m => {
+            const active = chatMode === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setChatMode(m.id)}
+                title={m.desc}
+                style={{
+                  flex: 1, height: 26, border: active ? "1px solid var(--amber)" : "1px solid var(--b2)",
+                  borderRadius: "var(--r2)",
+                  background: active ? "var(--amber)" : "transparent",
+                  color: active ? "#0a0a0a" : "var(--t3)",
+                  fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: active ? 700 : 400,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.borderColor = "var(--amber)"; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.borderColor = "var(--b2)"; }}
+              >
+                <span>{m.icon}</span> {m.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Textarea + controls */}
         <div style={{ display: "flex", gap: 5, alignItems: "flex-end" }}>
           <textarea
@@ -771,7 +820,12 @@ function AgentChatPanel({ projectPath, authToken }: { projectPath: string | null
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder={listening ? "Listening…" : "Ask the agent… (Shift+Enter = newline)"}
+            placeholder={
+              listening ? "Listening…" :
+              chatMode === "ask"  ? "Ask anything — concepts, errors, ideas…" :
+              chatMode === "plan" ? "Describe what you want to build — get a plan…" :
+              "Code, build, flash, debug… (Shift+Enter = newline)"
+            }
             disabled={running}
             rows={3}
             style={{

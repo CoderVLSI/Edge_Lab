@@ -2,13 +2,46 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { anthropicAgentLoop, openaiAgentLoop, type AgentEvent } from "../lib/agent/loop";
+import { TOOL_DEFS } from "../lib/agent/tools";
 
 export const agentRouter = new Hono<{ Variables: { userId: string } }>();
+
+// ── Tool sets per chat mode ──────────────────────────────────────────────────
+const PLAN_TOOLS = new Set([
+  "web_search", "web_fetch", "todo", "read_file", "write_file",
+  "list_files", "search_files", "search_codebase",
+]);
+
+// ── System prompts per chat mode ─────────────────────────────────────────────
+function askSystemPrompt(boardType?: string) {
+  return `You are an expert embedded systems engineer and educator inside Edge Lab IDE.
+Answer questions clearly, explain concepts, debug ideas, and give practical guidance.
+Use code blocks for examples. Keep answers focused and complete.
+${boardType ? `The user is working with: ${boardType}.` : ""}
+You are in ASK mode — conversational only, no tools.`.trim();
+}
+
+function planSystemPrompt(boardType?: string, fileContext?: string) {
+  const fileCtx = fileContext ? `\nCurrent project file:\n\`\`\`\n${fileContext.slice(0, 2000)}\n\`\`\`` : "";
+  return `You are an expert embedded systems architect inside Edge Lab IDE.
+You are in PLAN mode — research and design a clear, actionable plan.
+${boardType ? `Target hardware: ${boardType}.` : ""}
+
+Workflow:
+1. Use web_search + web_fetch to research components, datasheets, libraries
+2. Use list_files + read_file to understand existing project structure
+3. Use todo to build a structured step-by-step plan
+4. Optionally write_file a PLAN.md with the full plan
+
+Return a clean plan with: overview, components needed, wiring/pinout, phases, and implementation steps.
+Do NOT write production code or run builds — plan and research only.${fileCtx}`.trim();
+}
 
 const SYSTEM_PROMPT = (boardType?: string, fileContext?: string, mode?: string) => {
   const base = `You are an expert embedded systems engineer AI agent built into the Edge Lab IDE.
 You can READ files, WRITE code, EDIT files, SEARCH the codebase, RUN bash commands,
 FLASH firmware to boards, READ serial output, SEND serial commands, and check GIT status.
+You can also SPAWN specialist sub-agents: web researcher, serial debugger, PCB designer, code engineer.
 ${boardType ? `The user is developing for: ${boardType}.` : ""}
 
 Workflow for verify-after-flash:
@@ -65,11 +98,24 @@ agentRouter.post(
       boardType: z.string().optional(),
       fileContext: z.string().optional(),
       mode: z.enum(["firmware", "schematics", "board"]).optional(),
+      chatMode: z.enum(["ask", "plan", "code"]).default("code"),
     })
   ),
   async (c) => {
-    const { provider, model, projectId, messages, boardType, fileContext, mode } = c.req.valid("json");
-    const systemPrompt = SYSTEM_PROMPT(boardType, fileContext, mode);
+    const { provider, model, projectId, messages, boardType, fileContext, mode, chatMode } = c.req.valid("json");
+
+    // Pick system prompt + allowed tools based on chat mode
+    const systemPrompt = chatMode === "ask"
+      ? askSystemPrompt(boardType)
+      : chatMode === "plan"
+        ? planSystemPrompt(boardType, fileContext)
+        : SYSTEM_PROMPT(boardType, fileContext, mode);
+
+    const toolDefs = chatMode === "ask"
+      ? []                                                          // no tools in Ask
+      : chatMode === "plan"
+        ? TOOL_DEFS.filter(t => PLAN_TOOLS.has(t.name))           // research + todo only
+        : undefined;                                                // all tools in Code
 
     // Keys can come from env vars OR from request headers (set by the in-app settings modal)
     const anthropicKey  = resolveKey(process.env.ANTHROPIC_API_KEY,  c.req.header("X-ANTHROPIC_API_KEY"));
@@ -102,27 +148,25 @@ agentRouter.post(
 
           if (provider === "anthropic") {
             if (!anthropicKey) throw new Error("No Anthropic API key — add it in Settings (⚙ gear icon).");
-            loop = anthropicAgentLoop(messages, systemPrompt, model, projectId, anthropicKey, toolKeys);
+            loop = anthropicAgentLoop(messages, systemPrompt, model, projectId, anthropicKey, toolKeys, toolDefs);
           } else if (provider === "openai") {
             if (!openaiKey) throw new Error("No OpenAI API key — add it in Settings (⚙ gear icon).");
-            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, openaiKey, undefined, undefined, toolKeys);
+            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, openaiKey, undefined, undefined, toolKeys, toolDefs);
           } else if (provider === "gemini") {
-            // Gemini exposes an OpenAI-compatible endpoint — reuse openaiAgentLoop
             if (!geminiKey) throw new Error("No Gemini API key — add it in Settings (⚙ gear icon).");
             loop = openaiAgentLoop(
               messages, systemPrompt, model, projectId, geminiKey,
               "https://generativelanguage.googleapis.com/v1beta/openai/",
-              undefined, toolKeys
+              undefined, toolKeys, toolDefs
             );
           } else if (provider === "openrouter") {
             if (!openrouterKey) throw new Error("No OpenRouter API key — add it in Settings (⚙ gear icon).");
             loop = openaiAgentLoop(messages, systemPrompt, model, projectId, openrouterKey, "https://openrouter.ai/api/v1", {
               "HTTP-Referer": process.env.WEB_URL ?? "http://localhost:3000",
               "X-Title": "Edge Lab IDE",
-            }, toolKeys);
+            }, toolKeys, toolDefs);
           } else {
-            // Ollama — no key needed, uses local OpenAI-compatible endpoint
-            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, "ollama", ollamaBase + "/v1", undefined, toolKeys);
+            loop = openaiAgentLoop(messages, systemPrompt, model, projectId, "ollama", ollamaBase + "/v1", undefined, toolKeys, toolDefs);
           }
 
           for await (const event of loop) {
